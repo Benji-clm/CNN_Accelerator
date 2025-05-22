@@ -1,0 +1,89 @@
+# Build outputs
+*.o
+*.out
+*.exe
+*.a
+*.so
+*.dll
+
+# Verilator generated files
+obj_dir/
+*.mk
+*.d
+V*.cpp
+V*.h
+verilated*.cpp
+verilated*.h
+
+# Simulation outputs
+*.vcd
+*.fst
+*.gtkw
+*.vvp
+*.lxt
+*.lxt2
+
+# ModelSim/QuestaSim files
+work/
+transcript
+vsim.wlf
+*.mpf
+
+# Xilinx/Vivado files
+*.jou
+*.log
+*.debug
+*.str
+*.xpr
+*.hw/
+*.cache/
+*.runs/
+*.ip_user_files/
+*.sim/
+*.impl/
+*.bit
+*.bin
+
+# Quartus files
+db/
+incremental_db/
+output_files/
+*.rpt
+*.summary
+*.qws
+*.qpf
+*.qsf
+*.done
+*.smsg
+
+# Test outputs and reports
+*.gcda
+*.gcno
+*.info
+*.xml
+covhtmlreport/
+
+# Editor temporary files
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+*.sublime-*
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts & directories
+build/
+_build/
+cmake-build-*/
+
+# Project specific build directories
+convolution_waveform.vcd
+
+# Dependencies
+node_modules/
+vendor/
