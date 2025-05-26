@@ -55,20 +55,20 @@ def save_weights_to_file(model, filename='model_weights.txt'):
             
             elif 'fc1.weight' in name:
                 # For fc1 weights: [output_units, input_units]
-                f.write(f"First 5 rows (of {param_np.shape[0]} output units):\n")
-                for i in range(min(5, param_np.shape[0])):
-                    f.write(f"  Output Unit {i + 1}: {' '.join(f'{x:.6f}' for x in param_np[i, :10])} ... (first 10 of {param_np.shape[1]} inputs)\n")
+                f.write(f"{param_np.shape[0]} by {param_np.shape[1]} weight matrix:\n")
+                for i in range(min(100, param_np.shape[0])):
+                    f.write(f"{' '.join(f'{x:.6f}' for x in param_np[i, :3137])}\n")
             
             elif 'fc1.bias' in name:
                 # For fc1 bias: one value per output unit
                 f.write(f"First 5 biases (of {param_np.shape[0]}):\n")
-                for i in range(min(5, param_np.shape[0])):
+                for i in range(min(100, param_np.shape[0])):
                     f.write(f"  Bias for Unit {i + 1}: {param_np[i]:.6f}\n")
             
             elif 'fc2.weight' in name:
                 # For fc2 weights: [output_classes, input_units]
                 for i in range(param_np.shape[0]):
-                    f.write(f"Output Class {i} (Digit {i}): {' '.join(f'{x:.6f}' for x in param_np[i, :10])} ... (first 10 of {param_np.shape[1]} inputs)\n")
+                    f.write(f"Output Class {i} (Digit {i}): {' '.join(f'{x:.6f}' for x in param_np[i, :65])} \n")
             
             elif 'fc2.bias' in name:
                 # For fc2 bias: one value per output class
@@ -82,8 +82,18 @@ print("Extracting and saving model weights to 'model_weights.txt'...")
 save_weights_to_file(model)
 print("Weights saved to 'model_weights.txt'")
 
-# Verify GPU availability (optional, to ensure model context)
-print("CUDA available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    print("GPU device:", torch.cuda.get_device_name(0))
-    print("CUDA version:", torch.version.cuda)
+# Extract linear layers' weights
+linear_state_dict = {
+    key: value for key, value in model.state_dict().items()
+    if key.startswith('fc1') or key.startswith('fc2')
+}
+
+# Save to a new .pth file
+output_file = 'linear_layers.pth'
+torch.save(linear_state_dict, output_file)
+print(f"Linear layers' weights saved to '{output_file}'")
+
+# Verify saved weights
+print("\nSaved weights:")
+for key, value in linear_state_dict.items():
+    print(f"{key}: shape {value.shape}")
