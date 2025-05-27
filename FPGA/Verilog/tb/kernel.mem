@@ -1,0 +1,6 @@
+// 5x5 vertical edge detection kernel
+FC FE 00 02 04
+FC FE 00 02 04
+FC FE 00 02 04
+FC FE 00 02 04
+FC FE 00 02 04
