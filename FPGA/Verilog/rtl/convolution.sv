@@ -44,10 +44,11 @@ module convolution #(
             end
             //reset convolution register
             conv_reg <= '0;
-        end else if (valid_out) begin
-            // output the convolution result
-            conv_reg <= result_reg;
         end else if (valid_in) begin
+            if (valid_out) begin
+                // output the convolution result
+                conv_reg <= result_reg;
+            end
             if (kernel_load) begin
                 // Load kernel data into kernel_matrix
                 for (int i = 0; i < KERNEL_SIZE; i++) begin

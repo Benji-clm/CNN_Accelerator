@@ -1,3 +1,6 @@
+`define CONV_LENGTH 32
+`define CONV_OUTPUT 32
+
 module control_cv #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE = 5,
@@ -5,10 +8,12 @@ module control_cv #(
     parameter STRIDE = 1,
     parameter PADDING = 1,
     localparam DATA_ARRAY = DATA_WIDTH * KERNEL_SIZE,
-    parameter PARALLEL_SIZE = 3,
+    parameter CONV_OUTPUT = `CONV_OUTPUT,
+    parameter CONV_LENGTH = `CONV_LENGTH
 )(
     input logic clk,
     input logic rst,
+    input logic start,
     output logic [CONV_OUTPUT-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0],
     output logic done
 );
@@ -37,14 +42,11 @@ logic [$clog2(KERNEL_SIZE):0] kernel_col;
 logic [$clog2(IMAGE_SIZE):0] image_col;
 logic [$clog2(KERNEL_SIZE):0] delay_counter;  // For the image loading delay
 
-inital begin
+initial begin
     // Initialize kernel matrix and image buffer (example values)
     $readmemh("kernel_data.hex", kernel_matrix);
     $readmemh("image_data.hex", image);
-
-    kernel_load = 1'b1; // Load kernel data
-    valid_in = 1'b1; // Valid input signal
-    valid_out = 1'b0; // Initially not valid output
+    // Do not assign kernel_load, valid_in, valid_out here for synthesis
 end
 
 // State register
@@ -77,7 +79,7 @@ always_ff @(posedge clk or posedge rst) begin
                 // Set kernel_load high during kernel loading
                 kernel_load <= 1;
                 valid_in <= 1;
-                
+                valid_out <= 0; // Set valid output low during kernel loading
                 // Update kernel position counters
                if (kernel_col < KERNEL_SIZE-1) begin
                     kernel_col <= kernel_col + 1;
@@ -115,19 +117,19 @@ end
 
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-        col_counter <= 0;
+        image_col <= 0;
         valid_out <= 1'b0; // Reset valid output
         kernel_load <= 1'b1; // Reset kernel load signal
     end else begin
         if (kernel_load) begin
             //load kernel data
         end
-        if (col_counter < IMAGE_SIZE - KERNEL_SIZE + 1) begin
+        else if (image_col < IMAGE_SIZE - 1) begin
             // Increment column counter to slide the kernel
-            col_counter <= col_counter + STRIDE;
+            image_col <= image_col + STRIDE;
             valid_out <= 1'b1; // Set valid output when processing a new row
         end else begin
-            col_counter <= 0; // Reset counter after processing all rows
+            image_col <= 0; // Reset counter after processing all rows
             valid_out <= 1'b0; // Reset valid output after processing
         end
     end
@@ -145,7 +147,7 @@ always_comb begin
         
         LOAD_KERNEL: begin
             if (kernel_col == KERNEL_SIZE-1)
-                next_state = KERNEL_DELAY;
+                next_state = KERNEL_DELAY; // Reset image column counter
         end
         
         KERNEL_DELAY: begin
@@ -154,7 +156,7 @@ always_comb begin
         end
         
         PROCESS_IMAGE: begin
-            if (image_col == IMAGE_SIZE - KERNEL_SIZE)
+            if (image_col == IMAGE_SIZE - 1)
                 next_state = COMPLETE;
         end
         
@@ -182,7 +184,6 @@ always_comb begin
     end
 end
 
-
 // create a parallel block for each row of the image
 genvar i;
 generate
@@ -191,16 +192,13 @@ generate
             .DATA_WIDTH(DATA_WIDTH),
             .KERNEL_SIZE(KERNEL_SIZE),
             .STRIDE(STRIDE),
-            .PADDING(PADDING),
-            .DATA_ARRAY(DATA_ARRAY),
-            .CONV_OUTPUT(CONV_OUTPUT),
-            .CONV_LENGTH(CONV_LENGTH)
+            .PADDING(PADDING)
         ) conv_inst (
             .clk(clk),
             .rst(rst),
-            .data_in0(data_in[i + 0]),
-            .data_in1(data_in[i + 1]),
-            .data_in2(data_in[i + 2]),
+            .data_in0(data_in[(kernel_load ? 0 : i * STRIDE) + 0]),
+            .data_in1(data_in[(kernel_load ? 0 : i * STRIDE) + 1]),
+            .data_in2(data_in[(kernel_load ? 0 : i * STRIDE) + 2]),
             .kernel_load(kernel_load),
             .valid_in(valid_in),
             .valid_out(valid_out),
