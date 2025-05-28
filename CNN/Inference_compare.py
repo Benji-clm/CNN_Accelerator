@@ -9,15 +9,15 @@ import time
 class MinimalCNN(nn.Module):
     def __init__(self):
         super(MinimalCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=5, stride=1, padding=2)
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=5, stride=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(16 * 14 * 14, 64)
+        self.fc1 = nn.Linear(16 * 12 * 12, 64)
         self.fc2 = nn.Linear(64, 10)
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
-        x = x.view(-1, 16 * 14 * 14)
+        x = x.view(-1, 16 * 12 * 12)
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
