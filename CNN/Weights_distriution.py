@@ -8,8 +8,8 @@ class MinimalCNN(nn.Module):
         super(MinimalCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 4, kernel_size=5, stride=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(4, 16, kernel_size=3, stride = 1)
-        self.conv3 = nn.Conv2d(16, 10, kernel_size=4, stride = 1)
+        self.conv2 = nn.Conv2d(4, 8, kernel_size=3, stride = 1)
+        self.conv3 = nn.Conv2d(8, 10, kernel_size=4, stride = 1)
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
@@ -23,11 +23,11 @@ class MinimalCNN(nn.Module):
 
 # Load the saved model
 model = MinimalCNN()
-model.load_state_dict(torch.load('mnist_cnn_4-16-10.pth'))
+model.load_state_dict(torch.load('mnist_cnn_4-8-10.pth'))
 model.eval()
 
 # Function to format and save weights
-def save_weights_to_file(model, filename='model_weights.txt'):
+def save_weights_to_file(model, filename='model_weights_4-8-10.txt'):
     with open(filename, 'w') as f:
         # Iterate through model parameters
         for name, param in model.named_parameters():

@@ -11,8 +11,8 @@ class MinimalCNN(nn.Module):
         super(MinimalCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 4, kernel_size=5, stride=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(4, 16, kernel_size=3, stride = 1)
-        self.conv3 = nn.Conv2d(16, 10, kernel_size=4, stride = 1)
+        self.conv2 = nn.Conv2d(4, 8, kernel_size=3, stride = 1)
+        self.conv3 = nn.Conv2d(8, 10, kernel_size=4, stride = 1)
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
@@ -27,11 +27,11 @@ class MinimalCNN(nn.Module):
 # Load the test dataset
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
 test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # Load the saved model
 model = MinimalCNN()
-model.load_state_dict(torch.load('mnist_cnn_4-16-10.pth'))
+model.load_state_dict(torch.load('mnist_cnn_4-8-10.pth'))
 
 # Function to measure inference time and average per sample
 def measure_inference_time(model, data_loader, device):

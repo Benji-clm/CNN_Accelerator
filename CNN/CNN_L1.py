@@ -26,9 +26,16 @@ class MinimalCNN(nn.Module):
         return x
 
 # Load the MNIST dataset
-transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+# Data with augmentation
+train_transform = transforms.Compose([
+    # transforms.RandomAffine(degrees=10, translate=(0.1, 0.1)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=train_transform)
+test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=test_transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
@@ -37,11 +44,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(str(device))
 # Initialize model, loss function, and optimizer
 model = MinimalCNN().to(device)
+optimizer = optim.Adam(model.parameters(), lr=0.002, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Train the model
-num_epochs = 20
+num_epochs = 30
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
