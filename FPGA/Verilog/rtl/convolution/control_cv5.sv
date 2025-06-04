@@ -1,7 +1,7 @@
 `define CONV_LENGTH 32
 `define CONV_OUTPUT 32
 
-module control_cv #(
+module control_cv5 #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE = 5,
     parameter IMAGE_SIZE = 28,
@@ -171,7 +171,7 @@ logic [DATA_ARRAY-1:0] data_in [IMAGE_SIZE-1:0];
 always_comb begin
     if (kernel_load) begin
         for (int i = 0; i < KERNEL_SIZE; i++) begin
-            // Load kernel data into data_in0, data_in1, data_in2
+            // Load kernel data into data_in0, data_in1, data_in2, data_in3, data_in4
             data_in[i] = kernel_matrix[kernel_col][i];
         end
     end else begin
@@ -185,7 +185,7 @@ end
 genvar i;
 generate
     for (i = 0; i < IMAGE_SIZE - KERNEL_SIZE + 1; i++) begin : gen_parallel
-        convolution #(
+        conv_5 #(
             .DATA_WIDTH(DATA_WIDTH),
             .KERNEL_SIZE(KERNEL_SIZE),
             .STRIDE(STRIDE),
@@ -196,6 +196,8 @@ generate
             .data_in0(data_in[(kernel_load ? 0 : i * STRIDE) + 0]),
             .data_in1(data_in[(kernel_load ? 0 : i * STRIDE) + 1]),
             .data_in2(data_in[(kernel_load ? 0 : i * STRIDE) + 2]),
+            .data_in3(data_in[(kernel_load ? 0 : i * STRIDE) + 3]),
+            .data_in4(data_in[(kernel_load ? 0 : i * STRIDE) + 4]),
             .kernel_load(kernel_load),
             .valid_in(valid_in),
             .valid_out(valid_out),

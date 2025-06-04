@@ -17,11 +17,11 @@ module addfp16 (
 
     // Unpack a
     assign sign_a = a[15];
-    assign exp_a  = a[14:10];
+    assign exp_a  = a[14:10] - 5'h1F; // Bias of 15 for FP16
     assign frac_a = (exp_a == 0) ? {1'b0, a[9:0]} : {1'b1, a[9:0]}; // denormals
     // Unpack b
     assign sign_b = b[15];
-    assign exp_b  = b[14:10];
+    assign exp_b  = b[14:10] - 5'h1F; // Bias of 15 for FP16
     assign frac_b = (exp_b == 0) ? {1'b0, b[9:0]} : {1'b1, b[9:0]}; // denormals
 
     // Align exponents
