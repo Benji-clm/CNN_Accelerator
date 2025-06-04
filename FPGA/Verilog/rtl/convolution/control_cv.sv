@@ -117,8 +117,7 @@ end
 
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-        image_col <= 0;
-        valid_out <= 1'b0; // Reset valid output
+        image_col <= 0; // Reset valid output
         kernel_load <= 1'b1; // Reset kernel load signal
     end else begin
         if (kernel_load) begin
@@ -127,10 +126,8 @@ always_ff @(posedge clk or posedge rst) begin
         else if (image_col < IMAGE_SIZE - 1) begin
             // Increment column counter to slide the kernel
             image_col <= image_col + STRIDE;
-            valid_out <= 1'b1; // Set valid output when processing a new row
         end else begin
             image_col <= 0; // Reset counter after processing all rows
-            valid_out <= 1'b0; // Reset valid output after processing
         end
     end
 end
@@ -151,7 +148,7 @@ always_comb begin
         end
         
         KERNEL_DELAY: begin
-            if (delay_counter >= KERNEL_SIZE - 1)  // 2-cycle delay
+            if (delay_counter >= KERNEL_SIZE - 3)  // 2-cycle delay
                 next_state = PROCESS_IMAGE;
         end
         

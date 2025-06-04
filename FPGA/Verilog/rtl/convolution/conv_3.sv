@@ -31,11 +31,22 @@ module convolution #(
     // result register
     logic signed [CONV_OUTPUT-1:0] result_reg;
 
+    // Multiplication store array
+    logic signed [DATA_ARRAY-1:0] mul_store [0:KERNEL_SIZE*KERNEL_SIZE-1];
+
     // Assign output
     assign data_out = conv_reg;
 
     // Load kernel data
     always_ff @(posedge clk) begin
+        if (valid_out) begin
+            // output the convolution result
+            conv_reg <= result_reg;
+        end else begin 
+            // hold convolution register
+            conv_reg <= conv_reg;
+        end
+
         if (rst) begin
             //reset kernel and image buffers
             for (int i = 0; i < KERNEL_SIZE; i++) begin
@@ -45,39 +56,30 @@ module convolution #(
             //reset convolution register
             conv_reg <= '0;
         end else if (valid_in) begin
-            if (valid_out) begin
-                // output the convolution result
-                conv_reg <= result_reg;
-            end
             if (kernel_load) begin
                 // Load kernel data into kernel_matrix
                 for (int i = 0; i < KERNEL_SIZE; i++) begin
                     kernel_matrix[i] <= kernel_matrix[i+1];
                 end
                 kernel_matrix[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
-                // hold convolution register
-                conv_reg <= conv_reg;
             end else begin
                 // move window over the image
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     image_buffer[i] <= image_buffer[i+1];
                 end
                 image_buffer[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
-                // set convolution register to results most significant bits
-                //conv_reg <= result_reg;
             end
-        end 
-        else begin
+        end else begin
             // hold kernel and image buffers
             for (int i = 0; i < KERNEL_SIZE; i++) begin
                 kernel_matrix[i] <= kernel_matrix[i];
                 image_buffer[i] <= image_buffer[i];
             end
-            // hold convolution register
-            conv_reg <= conv_reg;
         end
     end
 
+    
+    // This section is commented out as it is replaced by the fp16 multiplier instances
     // Convolution operation
     always_comb begin
         result_reg = '0;
@@ -87,9 +89,34 @@ module convolution #(
                               $signed(image_buffer[i][(j+1)*DATA_WIDTH-1 -: DATA_WIDTH]);
             end
         end
+    end 
+    
+
+/*
+genvar k, l;
+// Generate fp16 multiplier instances
+generate
+    for (k = 0; k < KERNEL_SIZE; k++) begin : gen_row
+        for (l = 0; l < KERNEL_SIZE; l++) begin : gen_col
+            // Generate multiplier instances for each kernel and image buffer
+            // This assumes that the kernel and image buffers are 2D arrays
+            // and that the multiplication is done in parallel.
+            mulfp16 #(
+            ) mul_inst (
+                .clk(clk),
+                .rst(rst),
+                .a_in(image_buffer[k]),
+                .b_in(kernel_matrix[l]),
+                .load_b(0),
+                .a_out(),
+                .c_out(mul_store[k*KERNEL_SIZE + l]),
+                .mode_fp16(1'b1), // Assuming fp16 mode
+                .signed_mode(1'b1) // Assuming signed mode
+            );
+        end
     end
-
-
+endgenerate
+*/
 
 
     endmodule
