@@ -4,9 +4,8 @@
  */
 
  #include "base_testbench.h"
- #include "Vfp16_max_comparator.h" // Verilated module header
  
- Vfp16_max_comparator *top;
+ Vdut *top;
  VerilatedVcdC *tfp;
  unsigned int ticks = 0;
  
@@ -69,7 +68,7 @@
  }
  
  int main(int argc, char **argv) {
-     top = new Vfp16_max_comparator;
+     top = new Vdut;
      tfp = new VerilatedVcdC;
  
      Verilated::traceEverOn(true);
