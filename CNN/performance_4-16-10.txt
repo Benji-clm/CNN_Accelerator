@@ -1,0 +1,4 @@
+GPU total inference time: 1.6143 seconds
+GPU average inference time per sample: 0.1614 ms
+CPU total inference time: 1.5318 seconds
+CPU average inference time per sample: 0.1532 ms

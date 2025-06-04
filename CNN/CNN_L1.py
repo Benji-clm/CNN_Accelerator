@@ -4,42 +4,52 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
+from torchsummary import summary
 
 # Define the minimal CNN architecture
 class MinimalCNN(nn.Module):
     def __init__(self):
         super(MinimalCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=5, stride=1, padding=2)
+        self.conv1 = nn.Conv2d(1, 4, kernel_size=5, stride=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(16 * 14 * 14, 64)
-        self.fc2 = nn.Linear(64, 10)
-        self.dropout = nn.Dropout(0.5)
+        self.conv2 = nn.Conv2d(4, 8, kernel_size=3, stride = 1)
+        self.conv3 = nn.Conv2d(8, 10, kernel_size=4, stride = 1)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
-        x = x.view(-1, 16 * 14 * 14)
-        x = F.relu(self.fc1(x))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.conv3(x)
         x = self.dropout(x)
-        x = self.fc2(x)
+        x = torch.sum(x, dim=(2, 3))
+        x = x.view(-1, 10)
         return x
 
 # Load the MNIST dataset
-transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+# Data with augmentation
+train_transform = transforms.Compose([
+    # transforms.RandomAffine(degrees=10, translate=(0.1, 0.1)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=train_transform)
+test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=test_transform)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # Set device (GPU if available, else CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+print(str(device))
 # Initialize model, loss function, and optimizer
 model = MinimalCNN().to(device)
+optimizer = optim.Adam(model.parameters(), lr=0.002, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Train the model
-num_epochs = 10
+num_epochs = 30
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -69,3 +79,4 @@ print(f'Accuracy: {100 * correct / total}%')
 # Save the model
 torch.save(model.state_dict(), 'mnist_cnn.pth')
 print("Model saved as 'mnist_cnn.pth'")
+summary(model, input_size=(1, 28, 28))
