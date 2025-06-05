@@ -1,48 +1,72 @@
 module reduction #(
     parameter data_width = 16,
-    parameter mat_width = 2
+    parameter mat_height = 2
 )(
-    input logic                         clk,
-    input logic                         rst,
-    input logic                         valin_in,
-    input logic [mat_width-1:0] column [data_width-1:0],
-    output logic                        valid_out,
-    output logic [data_width-1:0]       sum
+    input  logic                         clk,
+    input  logic                         rst,
+    input  logic                         valid_in,
+    input  logic [data_width-1:0]        column [mat_height-1:0],
+    output logic                         valid_out,
+    output logic [data_width-1:0]        sum
 );
 
-reg [data_width-1:0] val_1;
-reg [data_width-1:0] val_2;
-reg [data_width-1:0] val_3;
-reg [data_width-1:0] val_4;
+typedef enum logic [1:0] {
+    IDLE,
+    LOAD_2,
+    OUTPUT
+} state_t;
 
-reg col_n = 0;
+state_t current_state, next_state;
 
-reg output_ready = 0;
+logic [data_width-1:0] val_1, val_2, val_3, val_4;
+logic valid_out_reg;
 
-always_ff @(posedge clk) begin
+always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-        sum <= 0;
-        output_ready <= 0;
-        col_n <= 0;
-        val_1 <= 0;
-        val_2 <= 0;
-        val_3 <= 0;
-        val_4 <= 0;
-    end else if (valin_in && !output_ready) begin
-            if(col_n == 1'b0) begin 
-                val_1 <= column[0];
-                val_2 <= column[1];
-                col_n <= 1'b1;
-            end else begin
+        current_state   <= IDLE;
+        val_1           <= 0;
+        val_2           <= 0;
+        val_3           <= 0;
+        val_4           <= 0;
+        valid_out_reg   <= 0;
+    end else begin
+        current_state <= next_state;
+
+        case (current_state)
+            IDLE: begin
+                if (valid_in) begin
+                    val_1 <= column[0];
+                    val_2 <= column[1];
+                end
+            end
+
+            LOAD_2: begin
                 val_3 <= column[0];
                 val_4 <= column[1];
-                col_n <= 1'b0;
-                sum <= (val_1 + val_2 + val_3 + val_4); // Compute the sum of the four values
-                valid_out <= 1; // Signal that the sum is ready
+                valid_out_reg <= 0;
             end
-    end else if (output_ready) begin
-        valid_out <= 0;
+
+            OUTPUT: begin
+                valid_out_reg <= 1;
+            end
+
+            default: begin
+                valid_out_reg <= 0;
+            end
+        endcase
     end
 end
+
+always_comb begin
+    next_state = current_state;
+    case (current_state)
+        IDLE:    if (valid_in) next_state = LOAD_2;
+        LOAD_2:  next_state = OUTPUT;
+        OUTPUT:  next_state = IDLE;
+    endcase
+end
+
+assign sum = val_1 + val_2 + val_3 + val_4; // combinational
+assign valid_out = valid_out_reg;           // registered
 
 endmodule

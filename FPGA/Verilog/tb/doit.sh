@@ -39,10 +39,11 @@ for file in "${files[@]}"; do
     fi
 
     # Translate Verilog -> C++ including testbench
+    verilog_file=$(find "${RTL_FOLDER}" -type f -name "${name}.sv" | head -n 1)
     verilator   -Wall --trace \
-                -cc ${RTL_FOLDER}/${name}.sv \
-                --exe ${file} \
-                -y ${RTL_FOLDER} \
+                -cc "${verilog_file}" \
+                --exe "${file}" \
+                -y "${RTL_FOLDER}" \
                 --prefix "Vdut" \
                 -o Vdut \
                 -LDFLAGS "-lgtest -lgtest_main -lpthread" \
