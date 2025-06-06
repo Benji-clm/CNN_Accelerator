@@ -93,7 +93,7 @@ TEST_F(AddFP16Testbench, SimpleAddition)
     EXPECT_NEAR(result, 3.0f, 0.01f);
 }
 
-/*
+
 TEST_F(AddFP16Testbench, NegativeAddition)
 {
     // -1.5 + 2.5 = 1.0
@@ -137,7 +137,7 @@ TEST_F(AddFP16Testbench, UnderflowToZero)
     float result = fp16_to_float(top->sum);
     EXPECT_NEAR(result, 0.0f, 0.001f);
 }
-*/
+
 
 int main(int argc, char **argv)
 {
