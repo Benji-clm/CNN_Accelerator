@@ -43,15 +43,19 @@ module mulfp16 (
         frac_b = (exp_b == 0) ? {1'b0, b_frac} : {1'b1, b_frac};
         if (~frac_a[10]) exp_a = 1;
         if (~frac_b[10]) exp_b = 1; 
+        /*
         $display("frac_a: %b", frac_a);
         $display("exp_a: %b", exp_a);
         $display("frac_b: %b", frac_b);
         $display("exp_b: %b", exp_b);
+        */
         // Multiply significands and compute initial exponent
         P = frac_a * frac_b;
         temp_exp = exp_a + exp_b - 15;
+        /*
         $display("P: %b", P);
         $display("exp_adjust: %b", exp_adjust);
+        */
         if (P == 0) begin
             c_out = {product_sign, 5'b00000, 10'b0000000000}; // Zero
         end else begin
@@ -70,8 +74,10 @@ module mulfp16 (
                     end
                 end
             end
+            /*
             $display("P_shifted: %b", P_shifted);
             $display("exp_adjust: %b", exp_adjust);
+            */
             // Determine output based on exponent
             if (temp_exp >= 1 && temp_exp <= 30) begin
                 // Normalized number
@@ -83,15 +89,15 @@ module mulfp16 (
             end else begin
                 // Subnormal or zero (temp_exp <= 0)
                 subnormal_shift = 1 - temp_exp;
-                $display("temp_exp: %b", temp_exp);
-                $display("subnormal_shift: %b", subnormal_shift);
+                //$display("temp_exp: %b", temp_exp);
+                //$display("subnormal_shift: %b", subnormal_shift);
                 if (subnormal_shift > 20) begin
                     // Underflow to zero
                     c_out = {product_sign, 5'b00000, 10'b0000000000};
                 end else begin
                     // Subnormal number
                     P_denorm = P_shifted >> subnormal_shift;
-                    $display("P_denorm: %b", P_denorm);
+                    //$display("P_denorm: %b", P_denorm);
                     c_out = {product_sign, 5'b00000, P_denorm[19:10]};
                 end
             end

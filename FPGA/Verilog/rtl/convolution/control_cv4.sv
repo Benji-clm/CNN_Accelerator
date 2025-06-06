@@ -4,7 +4,7 @@
 module control_cv4 #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE = 4,
-    parameter IMAGE_SIZE = 28,
+    parameter IMAGE_SIZE = 10,
     parameter STRIDE = 1,
     parameter PADDING = 1,
     localparam DATA_ARRAY = DATA_WIDTH * KERNEL_SIZE,
