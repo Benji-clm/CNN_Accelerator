@@ -10,6 +10,8 @@ module reduction #(
     output logic [DATA_WIDTH-1:0]        sum
 );
 
+logic [DATA_WIDTH-1:0]  sum_1, sum_2;
+
 typedef enum logic [1:0] {
     IDLE,
     LOAD_2,
@@ -66,7 +68,26 @@ always_comb begin
     endcase
 end
 
-assign sum = val_1 + val_2 + val_3 + val_4; // combinational
-assign valid_out = valid_out_reg;           // registered
+
+
+addfp16 fp_adder_1 (
+    .a(val_1),
+    .b(val_2),
+    .sum(sum_1)
+);
+
+addfp16 fp_adder_2 (
+    .a(val_3),
+    .b(val_4),
+    .sum(sum_2)
+);
+
+addfp16 fp_adder_3 (
+    .a(sum_1),
+    .b(sum_2),
+    .sum(sum)
+);
+
+assign valid_out = valid_out_reg;
 
 endmodule

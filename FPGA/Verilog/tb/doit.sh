@@ -40,10 +40,19 @@ for file in "${files[@]}"; do
 
     # Translate Verilog -> C++ including testbench
     verilog_file=$(find "${RTL_FOLDER}" -type f -name "${name}.sv" | head -n 1)
+    
+    # Build include paths for all RTL subdirectories
+    INCLUDE_PATHS="-y ${RTL_FOLDER}"
+    for dir in $(find "${RTL_FOLDER}" -type d); do
+        if [ "$dir" != "${RTL_FOLDER}" ]; then
+            INCLUDE_PATHS="${INCLUDE_PATHS} -y $dir"
+        fi
+    done
+    
     verilator   -Wall --trace \
                 -cc "${verilog_file}" \
                 --exe "${file}" \
-                -y "${RTL_FOLDER}" \
+                ${INCLUDE_PATHS} \
                 --prefix "Vdut" \
                 -o Vdut \
                 -LDFLAGS "-lgtest -lgtest_main -lpthread" \
