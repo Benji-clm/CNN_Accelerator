@@ -1,13 +1,13 @@
 `define CONV_LENGTH 32
-`define CONV_OUTPUT 16
+`define CONV_OUTPUT 16  // Changed to 16 bits for half-precision
 
-module convolution #(
-    parameter DATA_WIDTH = 16,
-    parameter KERNEL_SIZE = 4,
+module conv_5 #(
+    parameter DATA_WIDTH = 16,    // Half-precision float width
+    parameter KERNEL_SIZE = 5,
     parameter STRIDE = 1,
     parameter PADDING = 1,
     localparam DATA_ARRAY = DATA_WIDTH * KERNEL_SIZE,
-    parameter CONV_OUTPUT = `CONV_OUTPUT,
+    parameter CONV_OUTPUT = 16,   // Changed to match DATA_WIDTH for FP16
     parameter CONV_LENGTH = `CONV_LENGTH
 )(
     input logic clk,
@@ -16,10 +16,11 @@ module convolution #(
     input logic [DATA_WIDTH-1:0] data_in1,
     input logic [DATA_WIDTH-1:0] data_in2,
     input logic [DATA_WIDTH-1:0] data_in3,
+    input logic [DATA_WIDTH-1:0] data_in4,
     input logic kernel_load,
     input logic valid_in,
     input logic valid_out,
-    output logic [CONV_OUTPUT-1:0] data_out
+    output logic [DATA_WIDTH-1:0] data_out  // Changed to DATA_WIDTH for FP16
 );
 
     // arrays for kernel and image data
@@ -59,13 +60,13 @@ module convolution #(
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     kernel_matrix[i] <= kernel_matrix[i+1];
                 end
-                kernel_matrix[KERNEL_SIZE-1] <= {data_in3, data_in2, data_in1, data_in0};
+                kernel_matrix[KERNEL_SIZE-1] <= {data_in4, data_in3, data_in2, data_in1, data_in0};
             end else begin
                 // move window over the image
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     image_buffer[i] <= image_buffer[i+1];
                 end
-                image_buffer[KERNEL_SIZE-1] <= {data_in3, data_in2, data_in1, data_in0};
+                image_buffer[KERNEL_SIZE-1] <= {data_in4, data_in3, data_in2, data_in1, data_in0};
             end
         end else begin
             // hold kernel and image buffers
@@ -141,4 +142,3 @@ module convolution #(
     endgenerate
 
 endmodule
-

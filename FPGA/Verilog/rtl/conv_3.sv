@@ -3,7 +3,7 @@
 
 module convolution #(
     parameter DATA_WIDTH = 16,
-    parameter KERNEL_SIZE = 4,
+    parameter KERNEL_SIZE = 3,
     parameter STRIDE = 1,
     parameter PADDING = 1,
     localparam DATA_ARRAY = DATA_WIDTH * KERNEL_SIZE,
@@ -15,7 +15,6 @@ module convolution #(
     input logic [DATA_WIDTH-1:0] data_in0,
     input logic [DATA_WIDTH-1:0] data_in1,
     input logic [DATA_WIDTH-1:0] data_in2,
-    input logic [DATA_WIDTH-1:0] data_in3,
     input logic kernel_load,
     input logic valid_in,
     input logic valid_out,
@@ -59,13 +58,13 @@ module convolution #(
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     kernel_matrix[i] <= kernel_matrix[i+1];
                 end
-                kernel_matrix[KERNEL_SIZE-1] <= {data_in3, data_in2, data_in1, data_in0};
+                kernel_matrix[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
             end else begin
                 // move window over the image
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     image_buffer[i] <= image_buffer[i+1];
                 end
-                image_buffer[KERNEL_SIZE-1] <= {data_in3, data_in2, data_in1, data_in0};
+                image_buffer[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
             end
         end else begin
             // hold kernel and image buffers
@@ -141,4 +140,3 @@ module convolution #(
     endgenerate
 
 endmodule
-
