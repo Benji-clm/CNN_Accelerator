@@ -30,8 +30,8 @@ module digit_dec #(
     genvar i;
     generate
         for (i = 0; i < PADDED; i++) begin : g_in
-            always_ff @(posedge clk or negedge rst_n) begin
-                if (!rst_n) begin
+            always_ff @(posedge clk) begin
+                if (rst) begin
                     stage0[i].val <= '0;
                     stage0[i].idx <= '0;
                 end else if (valid_in) begin
@@ -45,7 +45,7 @@ module digit_dec #(
 
     pair_t stage  [STAGES:0][PADDED];
 
-    // We can just use generatre for the decision tree, yay (white did I write the other stupid version IDK)
+    // We can just use generatre for the decision tree, yay (why did I write the other stupid version IDK)
     generate
         for (i = 0; i < PADDED; i++) begin
             always_comb begin
@@ -61,11 +61,24 @@ module digit_dec #(
             localparam int NEXT_LEN = CUR_LEN >> 1;
 
             for (k = 0; k < NEXT_LEN; k++) begin : g_cmp
-                always_ff @(posedge clk or negedge rst_n) begin
-                    if (!rst_n) begin
+                // FP16 comparison signals
+                logic a_gt_b, a_eq_b, a_lt_b;
+                
+                // Instantiate FP16 comparator
+                cmpfp16 fp_cmp (
+                    .a(stage[s][2*k].val),
+                    .b(stage[s][2*k+1].val),
+                    .a_gt_b(a_gt_b),
+                    .a_eq_b(a_eq_b),
+                    .a_lt_b(a_lt_b)
+                );
+                
+                always_ff @(posedge clk) begin
+                    if (rst) begin
                         stage[s+1][k] <= '0;
                     end else begin
-                        if (stage[s][2*k].val >= stage[s][2*k+1].val) begin
+                        // Choose the larger value (a_gt_b or a_eq_b means a >= b)
+                        if (a_gt_b || a_eq_b) begin
                             stage[s+1][k] <= stage[s][2*k];
                         end else begin
                             stage[s+1][k] <= stage[s][2*k+1];

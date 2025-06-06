@@ -18,6 +18,32 @@ protected:
     clockTick ();
   }
 
+  // Helper: Convert float to IEEE 754 half-precision (FP16) bit pattern
+  uint16_t
+  float_to_fp16 (float value)
+  {
+    union
+    {
+      float f;
+      uint32_t u;
+    } v = { value };
+    uint32_t f = v.u;
+    uint32_t sign = (f >> 31) & 0x1;
+    int32_t exp = ((f >> 23) & 0xFF) - 127 + 15;
+    uint32_t frac = (f >> 13) & 0x3FF;
+    if (exp <= 0)
+      {
+        exp = 0;
+        frac = 0;
+      }
+    else if (exp >= 31)
+      {
+        exp = 31;
+        frac = 0;
+      }
+    return (sign << 15) | ((exp & 0x1F) << 10) | frac;
+  }
+
   void
   clockTick ()
   {
