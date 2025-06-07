@@ -1,7 +1,7 @@
 `define CONV_LENGTH 32
 `define CONV_OUTPUT 32
 
-module control_cv4 #(
+module control_cv3 #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE = 3,
     parameter IMAGE_SIZE = 12,

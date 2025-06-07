@@ -1,7 +1,7 @@
 `define CONV_LENGTH 32
 `define CONV_OUTPUT 16
 
-module convolution #(
+module conv_3 #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE = 3,
     parameter STRIDE = 1,
