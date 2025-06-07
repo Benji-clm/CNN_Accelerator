@@ -5,7 +5,7 @@ module digit_dec #(
     input  logic                                 clk,
     input  logic                                 rst,
 
-    input  logic [DATA_WIDTH-1:0]                in_sum [N_MATS],
+    input  logic [DATA_WIDTH-1:0]                in_sum [N_MATS-1:0],
     input  logic                                 valid_in,
 
     output logic [DATA_WIDTH-1:0]                max,

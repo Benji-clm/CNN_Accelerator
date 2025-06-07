@@ -36,6 +36,7 @@ always_ff @(posedge clk or posedge rst) begin
 
         case (current_state)
             IDLE: begin
+                valid_out_reg <= 0;
                 if (valid_in) begin
                     val_1 <= column[0];
                     val_2 <= column[1];

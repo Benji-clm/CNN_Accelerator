@@ -1,4 +1,4 @@
-module top_reduction_array #(
+module top_reduction #(
     parameter int N_MATS   = 10,   // number of matrices to reduce in parallel
     parameter int DATA_WIDTH   = 16
 )(
