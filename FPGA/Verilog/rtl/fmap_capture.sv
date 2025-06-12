@@ -12,14 +12,14 @@ module fmap_capture #(
     parameter int PIX_BITS  = 8        // we store 8-bit greyscale
 )(
     input  logic                      clk,
-    input  logic                      rst_n,
+    input  logic                      rst,
 
     // ---------- CNN side (ready/valid handshake) ----------
     input  logic                      valid_col,               // new column available
     output logic                      ready_col,               // writer can accept - used to stall the CNN whilst we write
     input  logic [23:0]               data_col [PIX_H-1:0],    // PIX_H rows in parallel
 
-    // ---------- display-BRAM write port (port-A) ----------
+    // ---------- display-BRAM write port (port-A or B) ----------
     output logic [15:0]               bram_addr,
     output logic [PIX_BITS-1:0]       bram_wdata,
     output logic                      bram_we,
@@ -44,8 +44,8 @@ module fmap_capture #(
     // ----------------------------------------------------------------
     // Main FSM
     // ----------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
             st        <= IDLE;
             col_ptr   <= '0;
             row_ptr   <= '0;
