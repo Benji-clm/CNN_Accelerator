@@ -1,61 +1,30 @@
-// ====================================================================
-//  Feature-map capture for 256-bit BRAM
-//  – No handshake, captures 24 columns when valid_col is asserted
-//  – Converts fp16 IEEE 754 data to 8-bit grayscale
-//  – Packs 32 pixels (256 bits) per BRAM write
-//  – Writes entire feature map to BRAM efficiently
-// ====================================================================
-module fmap_capture #(
-    parameter int PIX_W     = 24,      // map width  (columns)
-    parameter int PIX_H     = 24,      // map height (rows)
-    parameter int BASE_ADDR = 0,       // byte offset in display BRAM
-    parameter int PIX_BITS  = 8        // we store 8-bit greyscale
+module fmap_capture_256 #(
+    parameter int PIX_H     = 24,
+    parameter       BASE_ADDR = 12'h000
 )(
-    input  logic                      clk,
-    input  logic                      rst,
+    input  logic            clk,
+    input  logic            rst,
+    input  logic            valid_col,
+    input  logic [15:0]     data_col [PIX_H-1:0],
 
-    // ---------- CNN side (no handshake) ----------
-    input  logic                      valid_col,               // start capture signal
-    input  logic [15:0]               data_col [PIX_H-1:0],    // PIX_H rows in parallel (fp16 format)
-
-    // ---------- display-BRAM write port (256-bit width) ----------
-    output logic [11:0]               bram_addr,
-    output logic [255:0]              bram_wdata,
-    output logic                      bram_we,
-
-    // ---------- completion pulse --------------
-    output logic                      done                     // 1-clk when full map stored
+    output logic [11:0]     bram_addr_a,
+    output logic [255:0]    bram_wrdata_a,
+    output logic [3:0]      bram_we_a,
+    
+    output logic            write_done
 );
 
-    // ----------------------------------------------------------------
-    // Internal state and parameters
-    // ----------------------------------------------------------------
-    localparam int ROWS = PIX_H;
-    localparam int COLS = PIX_W;
-    localparam int PIXELS_PER_WRITE = 32;              // 256 bits / 8 bits per pixel
-    localparam int TOTAL_WRITES = (ROWS * COLS + PIXELS_PER_WRITE - 1) / PIXELS_PER_WRITE;
 
-    // Feature map storage - 24x24 pixels, 8-bit each
-    logic [7:0] fmap_buffer [0:ROWS-1][0:COLS-1];
+// FP16 to 8-bit grayscale conversion function
+function automatic [7:0] fp16_to_gray;
+    input [15:0] fp16_val;
     
-    // Capture and write control
-    logic [$clog2(COLS)-1:0]  col_capture_cnt;         // column capture counter
-    logic [$clog2(TOTAL_WRITES)-1:0] write_cnt;        // BRAM write counter
-    logic capture_active;
-    logic write_active;
-
-    typedef enum logic [1:0] {IDLE, CAPTURE, WRITE} st_t;
-    st_t st;
-
-    // ----------------------------------------------------------------
-    // FP16 to 8-bit grayscale conversion function
-    // ----------------------------------------------------------------
-    function automatic logic [7:0] fp16_to_gray(logic [15:0] fp16_val);
-        logic sign;
-        logic [4:0] exponent;
-        logic [10:0] mantissa;
-        logic [7:0] result;
-        
+    reg sign;
+    reg [4:0] exponent;
+    reg [10:0] mantissa;
+    reg [7:0] result;
+    
+    begin
         sign = fp16_val[15];
         exponent = fp16_val[14:10];
         mantissa = {1'b1, fp16_val[9:0]}; // Add implicit leading 1
@@ -70,8 +39,7 @@ module fmap_capture #(
         end else begin
             // Normalized number
             // Bias is 15 for fp16, so exponent - 15 gives actual exponent
-            // For conversion to 8-bit: scale and clamp to [0, 255]
-            logic signed [5:0] actual_exp;
+            reg signed [5:0] actual_exp;
             actual_exp = exponent - 5'd15;
             
             if (sign) begin
@@ -93,95 +61,87 @@ module fmap_capture #(
             end
         end
         
-        return result;
-    endfunction
+        fp16_to_gray = result;
+    end
+endfunction
 
-    // ----------------------------------------------------------------
-    // Main FSM
-    // ----------------------------------------------------------------
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            st              <= IDLE;
-            col_capture_cnt <= '0;
-            write_cnt       <= '0;
-            capture_active  <= 1'b0;
-            write_active    <= 1'b0;
-            bram_we         <= 1'b0;
-            done            <= 1'b0;
-        end
-        else begin
-            // defaults every cycle
-            bram_we <= 1'b0;
-            done    <= 1'b0;
-
-            unique case (st)
-            // ================================================= IDLE
-            IDLE: begin
-                capture_active  <= 1'b0;
-                write_active    <= 1'b0;
-                col_capture_cnt <= '0;
-                write_cnt       <= '0;
-                
-                if (valid_col) begin
-                    capture_active <= 1'b1;
-                    st <= CAPTURE;
-                end
-            end
-
-            // ========================================= CAPTURE columns
-            CAPTURE: begin
-                if (capture_active) begin
-                    // Convert and store current column
-                    for (int r = 0; r < ROWS; r++) begin
-                        fmap_buffer[r][col_capture_cnt] <= fp16_to_gray(data_col[r]);
-                    end
-                    
-                    col_capture_cnt <= col_capture_cnt + 1;
-                    
-                    if (col_capture_cnt == COLS-1) begin
-                        // All columns captured, start writing to BRAM
-                        capture_active <= 1'b0;
-                        write_active   <= 1'b1;
-                        write_cnt      <= '0;
-                        st <= WRITE;
-                    end
-                end
-            end
-
-            // ========================================= WRITE to BRAM
-            WRITE: begin
-                if (write_active) begin
-                    bram_we <= 1'b1;
-                    bram_addr <= BASE_ADDR + write_cnt;
-                    
-                    // Pack 32 pixels into 256-bit word
-                    for (int i = 0; i < PIXELS_PER_WRITE; i++) begin
-                        logic [$clog2(ROWS*COLS)-1:0] pixel_idx;
-                        logic [$clog2(ROWS)-1:0] row_idx;
-                        logic [$clog2(COLS)-1:0] col_idx;
-                        
-                        pixel_idx = write_cnt * PIXELS_PER_WRITE + i;
-                        
-                        if (pixel_idx < ROWS * COLS) begin
-                            row_idx = pixel_idx / COLS;
-                            col_idx = pixel_idx % COLS;
-                            bram_wdata[i*8 +: 8] <= fmap_buffer[row_idx][col_idx];
-                        end else begin
-                            bram_wdata[i*8 +: 8] <= 8'h00; // Padding
-                        end
-                    end
-                    
-                    write_cnt <= write_cnt + 1;
-                    
-                    if (write_cnt == TOTAL_WRITES-1) begin
-                        // All data written
-                        write_active <= 1'b0;
-                        done <= 1'b1;
-                        st <= IDLE;
-                    end
-                end
-            end
-            endcase
+logic [7:0] gray_pixels [PIX_H-1:0];
+// Parallel conversion of entire column
+genvar i;
+generate
+    for (i = 0; i < PIX_H; i++) begin : gen_parallel_conversion
+        always_comb begin
+            gray_pixels[i] = fp16_to_gray(data_col[i]);
         end
     end
+endgenerate
+
+// put all the gray scale into one signal (Might waste compute when module is not being driven? I added valid col just in case - actually I deleted it now due to timing issues lol)
+// just assign gray concat to the output when needed
+
+logic [255:0] gray_concat;
+
+always_comb begin
+    gray_concat = '0;
+    for (int j = 0; j < PIX_H; j++) begin
+        gray_concat[j*8 +: 8] = gray_pixels[j];
+    end
+end
+
+
+logic [$clog2(PIX_H):0] col_idx;
+logic [$clog2(100):0]   time_out_counter;
+
+typedef enum logic {VALID, TIME_OUT} st_t;
+st_t st;
+
+
+always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+        time_out_counter <= '0;
+        st <= VALID;
+        col_idx      <= '0;
+        bram_we_a    <= 4'b0000;
+        write_done   <= 1'b0;
+    end
+    else begin
+
+        case(st)
+            VALID: begin
+                bram_we_a  <= 4'b0000;
+                write_done <= 1'b0;
+
+                if (valid_col) begin
+                    if(col_idx < PIX_H-1) begin
+                        st <= VALID;
+                        bram_addr_a   <= BASE_ADDR + col_idx;
+                        bram_wrdata_a <= gray_concat;
+                        bram_we_a     <= 4'b1111;
+                        col_idx <= col_idx + 1;
+                    end else begin
+                        bram_addr_a   <= BASE_ADDR + col_idx;
+                        bram_wrdata_a <= gray_concat;
+                        bram_we_a     <= 4'b1111;
+                        write_done <= 1'b1;
+                        col_idx    <= '0;
+                        time_out_counter <= '0;
+                        st <= TIME_OUT;
+                    end
+                end
+            end
+            TIME_OUT: begin
+                bram_we_a  <= 4'b0000;
+                write_done <= 1'b0;
+
+                if (time_out_counter == 99) begin
+                    st <= VALID;
+                    time_out_counter <= '0;
+                end else begin
+                    time_out_counter <= time_out_counter + 1;
+                end
+            end
+        endcase
+        end
+end
+
 endmodule
