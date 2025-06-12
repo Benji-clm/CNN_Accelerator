@@ -31,6 +31,18 @@ cd $SCRIPT_DIR
 
 # Iterate through files
 for file in "${files[@]}"; do
+   # Extract the directory name of the test file
+    TEST_FILE_DIR=$(dirname "$file")
+    TEST_SUBDIR=$(basename "$TEST_FILE_DIR")
+    echo "TEST_SUBDIR: $TEST_SUBDIR"
+    # Set RTL_FOLDER based on TEST_SUBDIR
+    if [ "$TEST_SUBDIR" == "tests" ]; then
+        RTL_FOLDER=$(realpath "$SCRIPT_DIR/../rtl")
+    else
+        RTL_FOLDER="${SCRIPT_DIR}/../rtl/${TEST_SUBDIR}"
+    fi
+    echo "RTL_FOLDER: $RTL_FOLDER"
+
     name=$(basename "$file" _tb.cpp | cut -f1 -d\-)
     
     # If verify.cpp -> we are testing the top module
@@ -55,7 +67,7 @@ for file in "${files[@]}"; do
                 ${INCLUDE_PATHS} \
                 --prefix "Vdut" \
                 -o Vdut \
-                -LDFLAGS "-lgtest -lgtest_main -lpthread" \
+                -LDFLAGS "-lgtest -lgtest_main -lpthread -lImath" \
 
     # Build C++ project with automatically generated Makefile
     make -j -C obj_dir/ -f Vdut.mk
