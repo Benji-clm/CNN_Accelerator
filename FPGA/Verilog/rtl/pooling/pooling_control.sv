@@ -30,7 +30,7 @@ module pooling_control (
             WAIT_FIRST: begin
                 if (valid_in) begin
                     next_state = WAIT_SECOND;
-                    store = 1'b1
+                    store = 1'b1;
                 end
             end
             WAIT_SECOND: begin
