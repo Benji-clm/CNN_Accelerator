@@ -2,9 +2,9 @@ module pooling_layer (
     input logic clk,
     input logic rst,
     input logic valid_in,
-    input logic [1:0][15:0] input_column,
+    input logic [23:0][15:0] input_column,
     output logic valid_out,
-    output logic [15:0] output_column
+    output logic [11:0][15:0] output_column
 );
 
     logic store;
@@ -16,14 +16,14 @@ module pooling_layer (
         .valid_out(valid_out)
     );
     // Combinational logic for 2x2 max pooling
-    for (genvar j = 0; j < 1; j++) begin : pool_gen
+    for (genvar j = 0; j < 12; j++) begin : pool_gen
         pooling_2x2 pool(
             .clk(clk),
             .rst(rst),
             .a(input_column[2*j]),
             .b(input_column[2*j+1]),
             .store(store), 
-            .pooled_value(output_column)
+            .pooled_value(output_column[j])
         );
     end
 

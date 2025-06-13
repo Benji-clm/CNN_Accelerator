@@ -11,13 +11,17 @@ module pooling_control (
     localparam WAIT_SECOND = 1'b1;
 
     logic current_state, next_state;
-
     // State register
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             current_state <= WAIT_FIRST;
         end else begin
             current_state <= next_state;
+            case (current_state)
+                WAIT_FIRST: valid_out <= 0;
+                WAIT_SECOND:
+                    if (valid_in) valid_out <= 1;
+            endcase
         end
     end
 
@@ -25,7 +29,6 @@ module pooling_control (
     always_comb begin
         next_state = current_state;
         store = 1'b0;
-        valid_out = 0;
         case (current_state)
             WAIT_FIRST: begin
                 if (valid_in) begin
@@ -36,7 +39,6 @@ module pooling_control (
             WAIT_SECOND: begin
                 if (valid_in) begin
                     next_state = WAIT_FIRST;
-                    valid_out = 1;
                 end
             end
         endcase
