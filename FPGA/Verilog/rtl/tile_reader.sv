@@ -10,7 +10,7 @@ module tile_reader #(
 
     output logic [7:0]         pixel,
     output logic               pixel_valid,
-    input  logic               pixel_ready,
+    // input  logic               pixel_ready,
 
     output logic [11:0]        bram_addr,
     input  logic [WORD_BITS-1:0] bram_rdata
@@ -32,7 +32,7 @@ module tile_reader #(
             FETCH : next = WAIT;
             WAIT  : next = STREAM;
             STREAM: begin
-                if (pixel_valid && pixel_ready && row_idx == TILE_H-1)
+                if (pixel_valid && row_idx == TILE_H-1)
                     next = FETCH;
             end
         endcase
@@ -54,7 +54,7 @@ module tile_reader #(
                     col_buf_valid <= 1'b1;
                     row_idx       <= 0;
                 end
-                STREAM: if (pixel_valid && pixel_ready) begin
+                STREAM: if (pixel_valid) begin
                     if (row_idx == TILE_H-1) begin
                         row_idx  <= 0;
                         col_idx  <= (col_idx == TILE_W-1) ? 0 : col_idx + 1;

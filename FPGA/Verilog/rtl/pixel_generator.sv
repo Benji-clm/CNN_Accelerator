@@ -196,14 +196,14 @@
 
 
 
-    reg [9:0] x;
-    reg [8:0] y;
+    // reg [9:0] x;
+    // reg [8:0] y;
 
-    wire first = (x == 0) & (y == 0);
-    wire lastx = (x == 23);  // Last pixel in 24-pixel row
-    wire lasty = (y == 23);  // Last row in 24-row column
-    wire [7:0] frame = regfile[0];
-    wire ready;
+    // wire first = (x == 0) & (y == 0);
+    // wire lastx = (x == 23);  // Last pixel in 24-pixel row
+    // wire lasty = (y == 23);  // Last row in 24-row column
+    // wire [7:0] frame = regfile[0];
+    // wire ready;
 
     // always @(posedge out_stream_aclk) begin
     //     if (periph_resetn) begin
@@ -225,121 +225,228 @@
 
     wire [7:0] r, g, b;
 
-    // ________________________ IMAGE TEST ____________________
+    // // ________________________ IMAGE TEST ____________________
 
-    wire [15:0] test_column_data [23:0];  // 2D array: 24 rows of 16-bit values
-    wire test_valid_col;
-    wire [7:0] current_gray_pixel;
-    wire pixel_valid;
+    // wire [15:0] test_column_data [23:0];  // 2D array: 24 rows of 16-bit values
+    // wire test_valid_col;
+    // wire [7:0] current_gray_pixel;
+    // wire pixel_valid;
 
-    wire [9:0] x_coordinate;
-    reg [8:0] column_n; 
+    // wire [9:0] x_coordinate;
+    // reg [8:0] column_n; 
 
-    // Generate test grayscale gradient data (white to black) in proper IEEE 754 FP16 format
-    // FP16 format: sign(1) + exponent(5) + mantissa(10)
-    genvar i;
-    generate
-        for (i = 0; i < 24; i = i + 1) begin : gen_gradient
-            wire [15:0] gradient_value;
+    // // Generate test grayscale gradient data (white to black) in proper IEEE 754 FP16 format
+    // // FP16 format: sign(1) + exponent(5) + mantissa(10)
+    // genvar i;
+    // generate
+    //     for (i = 0; i < 24; i = i + 1) begin : gen_gradient
+    //         wire [15:0] gradient_value;
             
-            case (i)
-                0:  assign gradient_value = 16'h3C00;  // 1.0
-                1:  assign gradient_value = 16'h3BDC;  // ~0.956
-                2:  assign gradient_value = 16'h3BB8;  // ~0.913
-                3:  assign gradient_value = 16'h3B94;  // ~0.870
-                4:  assign gradient_value = 16'h3B70;  // ~0.826
-                5:  assign gradient_value = 16'h3B4C;  // ~0.783
-                6:  assign gradient_value = 16'h3B28;  // ~0.739
-                7:  assign gradient_value = 16'h3B04;  // ~0.696
-                8:  assign gradient_value = 16'h3AE0;  // ~0.652
-                9:  assign gradient_value = 16'h3ABC;  // ~0.609
-                10: assign gradient_value = 16'h3A98;  // ~0.565
-                11: assign gradient_value = 16'h3A74;  // ~0.522
-                12: assign gradient_value = 16'h3A50;  // ~0.478
-                13: assign gradient_value = 16'h3A2C;  // ~0.435
-                14: assign gradient_value = 16'h3A08;  // ~0.391
-                15: assign gradient_value = 16'h39E4;  // ~0.348
-                16: assign gradient_value = 16'h39C0;  // ~0.304
-                17: assign gradient_value = 16'h399C;  // ~0.261
-                18: assign gradient_value = 16'h3978;  // ~0.217
-                19: assign gradient_value = 16'h3954;  // ~0.174
-                20: assign gradient_value = 16'h3930;  // ~0.130
-                21: assign gradient_value = 16'h390C;  // ~0.087
-                22: assign gradient_value = 16'h38E8;  // ~0.043
-                23: assign gradient_value = 16'h0000;  // 0.0
-                default: assign gradient_value = 16'h0000;
-            endcase
+    //         case (i)
+    //             0:  assign gradient_value = 16'h3C00;  // 1.0
+    //             1:  assign gradient_value = 16'h3BDC;  // ~0.956
+    //             2:  assign gradient_value = 16'h3BB8;  // ~0.913
+    //             3:  assign gradient_value = 16'h3B94;  // ~0.870
+    //             4:  assign gradient_value = 16'h3B70;  // ~0.826
+    //             5:  assign gradient_value = 16'h3B4C;  // ~0.783
+    //             6:  assign gradient_value = 16'h3B28;  // ~0.739
+    //             7:  assign gradient_value = 16'h3B04;  // ~0.696
+    //             8:  assign gradient_value = 16'h3AE0;  // ~0.652
+    //             9:  assign gradient_value = 16'h3ABC;  // ~0.609
+    //             10: assign gradient_value = 16'h3A98;  // ~0.565
+    //             11: assign gradient_value = 16'h3A74;  // ~0.522
+    //             12: assign gradient_value = 16'h3A50;  // ~0.478
+    //             13: assign gradient_value = 16'h3A2C;  // ~0.435
+    //             14: assign gradient_value = 16'h3A08;  // ~0.391
+    //             15: assign gradient_value = 16'h39E4;  // ~0.348
+    //             16: assign gradient_value = 16'h39C0;  // ~0.304
+    //             17: assign gradient_value = 16'h399C;  // ~0.261
+    //             18: assign gradient_value = 16'h3978;  // ~0.217
+    //             19: assign gradient_value = 16'h3954;  // ~0.174
+    //             20: assign gradient_value = 16'h3930;  // ~0.130
+    //             21: assign gradient_value = 16'h390C;  // ~0.087
+    //             22: assign gradient_value = 16'h38E8;  // ~0.043
+    //             23: assign gradient_value = 16'h0000;  // 0.0
+    //             default: assign gradient_value = 16'h0000;
+    //         endcase
             
-            assign test_column_data[i] = gradient_value;
-        end
-    endgenerate
+    //         assign test_column_data[i] = gradient_value;
+    //     end
+    // endgenerate
 
-    // Generate test valid signal - pulse every 28 cycles
-    reg [4:0] test_counter;
-    always @(posedge out_stream_aclk) begin
-        if (!periph_resetn) begin
-            test_counter <= 0;
-        end else begin
-            test_counter <= (test_counter == 27) ? 0 : test_counter + 1;
-        end
-    end
-    assign test_valid_col = (test_counter == 0);
+    // // Generate test valid signal - pulse every 28 cycles
+    // reg [4:0] test_counter;
+    // always @(posedge out_stream_aclk) begin
+    //     if (!periph_resetn) begin
+    //         test_counter <= 0;
+    //     end else begin
+    //         test_counter <= (test_counter == 27) ? 0 : test_counter + 1;
+    //     end
+    // end
+    // assign test_valid_col = (test_counter == 0);
 
-    easy_image #(
-        .PIX_W(24),
-        .PIX_H(24),
-        .X_SIZE(X_SIZE)
-    ) image_output (
-        .clk(out_stream_aclk),
-        .rst(!periph_resetn),  // Note: rst is active high in easy_image
-        .valid_col(test_valid_col),
-        .data_col(test_column_data),  // Corrected port name
-        .current_gray_pixel(current_gray_pixel),
-        .x_coordinate(x_coordinate),  // Corrected port name
-        .pixel_valid(pixel_valid)
-    );
+    // easy_image #(
+    //     .PIX_W(24),
+    //     .PIX_H(24),
+    //     .X_SIZE(X_SIZE)
+    // ) image_output (
+    //     .clk(out_stream_aclk),
+    //     .rst(!periph_resetn),  // Note: rst is active high in easy_image
+    //     .valid_col(test_valid_col),
+    //     .data_col(test_column_data),  // Corrected port name
+    //     .current_gray_pixel(current_gray_pixel),
+    //     .x_coordinate(x_coordinate),  // Corrected port name
+    //     .pixel_valid(pixel_valid)
+    // );
 
-    // Use the grayscale pixel output
-    assign r = current_gray_pixel;
-    assign g = current_gray_pixel;
-    assign b = current_gray_pixel;
+    // // Use the grayscale pixel output
+    // assign r = current_gray_pixel;
+    // assign g = current_gray_pixel;
+    // assign b = current_gray_pixel;
 
 
 
-    always @(posedge out_stream_aclk) begin
-        if (!periph_resetn) begin
-            column_n <= 0;
-        end else begin
-            // When easy_image finishes outputting a column (pixel_valid goes low after being high)
-            if (test_valid_col) begin
-                // New column data is being loaded, increment column counter
-                column_n <= (column_n == 23) ? 0 : column_n + 1;
+    // always @(posedge out_stream_aclk) begin
+    //     if (!periph_resetn) begin
+    //         column_n <= 0;
+    //     end else begin
+    //         // When easy_image finishes outputting a column (pixel_valid goes low after being high)
+    //         if (test_valid_col) begin
+    //             // New column data is being loaded, increment column counter
+    //             column_n <= (column_n == 23) ? 0 : column_n + 1;
+    //         end
+    //     end
+    // end
+
+    // // Use column_n as y-coordinate and x_coordinate from easy_image as x-coordinate
+    // always @(posedge out_stream_aclk) begin
+    //     if (!periph_resetn) begin
+    //         x <= 0;
+    //         y <= 0;
+    //     end else begin
+    //         if (pixel_valid) begin
+    //             x <= x_coordinate; 
+    //             y <= column_n;
+    //         end
+    //     end
+    // end
+
+
+    // // _________________________________________________________
+
+
+wire valid_int = 1'b1;
+
+
+parameter [255:0] TEST_DATA      = 256'hCAFEBEEF_D15EA5ED_DEADBEEF_01234567_89ABCDEF_FEEDFACE_F00DBABE_0BADF00D;
+parameter [11:0]  TEST_INT_ADDR  = 12'h000;   // location in 256-bit BRAM
+
+
+typedef enum logic {WAIT, WRITING} capture_state;
+
+logic valid_col;
+logic write_done;
+
+capture_state state_fmap;
+
+always @(posedge out_stream_aclk or negedge axi_resetn) begin
+    if (!axi_resetn) begin
+        state_fmap <= WAIT;
+        valid_col <= 0;
+    end else begin
+        case (state_fmap)
+            WAIT: begin
+                if(regfile[3] == 1'b1) begin
+                    state_fmap <= WRITING;
+                end else begin
+                    state_fmap <= WAIT;
+                    valid_col <= 0;
+                end
             end
-        end
-    end
-
-    // Use column_n as y-coordinate and x_coordinate from easy_image as x-coordinate
-    always @(posedge out_stream_aclk) begin
-        if (!periph_resetn) begin
-            x <= 0;
-            y <= 0;
-        end else begin
-            if (pixel_valid) begin
-                x <= x_coordinate; 
-                y <= column_n;
+            WRITING: begin
+                if(!write_done) begin 
+                    state_fmap <= WRITING;
+                    valid_col <= 1;
+                end else begin 
+                    state_fmap <= WAIT;
+                    valid_col <= 1;
+                end
             end
-        end
+        endcase
     end
+end
+
+assign bram_clk_a = out_stream_aclk;
+assign bram_en_a = 1'b1;
+assign bram_rst_a = 1'b0;
+
+logic [15:0] test_data_col [23:0];
+
+genvar k;
+generate
+    for (k = 0; k < 24; k++) begin : gen_test_data
+        assign test_data_col[k] = TEST_DATA[k*16 +: 16];
+    end
+endgenerate
+
+fmap_capture_256 #(
+    .PIX_H(24),
+    .BASE_ADDR(12'h000)
+) capture_256_bits (
+    .clk(out_stream_aclk),
+    .rst(!periph_resetn),
+    .valid_col(valid_col),
+    .data_col(test_data_col),
+    
+    // Connect to BRAM port A for writing
+    .bram_addr_a(bram_addr_a),
+    .bram_wrdata_a(bram_wrdata_a),
+    .bram_we_a(bram_we_a),
+    .write_done(write_done)
+);
 
 
-    // _________________________________________________________
+logic [7:0] current_gray_pixel;
+
+reg [9:0] x;
+reg [8:0] y;
+
+wire first;
+wire lastx;
+wire lasty;
+wire ready;
 
 
-    wire valid_int = 1'b1;
+assign bram_clk_b = out_stream_aclk;
+assign bram_en_b = 1'b1;
+assign bram_rst_b = 1'b0;
+assign bram_wrdata_b = 256'h0;
+assign bram_we_b = 4'h0;
 
+top_tiler #(
+    .X_SIZE(X_SIZE),
+    .Y_SIZE(Y_SIZE),
+    .READ_WIDTH(256),
+    .PIX_BITS(8)
+) top_tiler_inst (
+    .out_stream_aclk(out_stream_aclk),
+    .periph_resetn(periph_resetn),
+    .ready(ready),
+    .valid_int(valid_int),
 
-    // parameter [255:0] TEST_DATA      = 256'hCAFEBEEF_D15EA5ED_DEADBEEF_01234567_89ABCDEF_FEEDFACE_F00DBABE_0BADF00D;
-    // parameter [11:0]  TEST_INT_ADDR  = 12'h000;   // location in 256-bit BRAM
+    .first(first),
+    .pixel(current_gray_pixel),
+    .lastx(lastx),
+    .lasty(lasty),
+    
+    .bram_rdata(bram_rddata_b),
+    .bram_addr(bram_addr_b)
+);
+
+assign r = current_gray_pixel;
+assign g = current_gray_pixel; 
+assign b = current_gray_pixel;
+
     // parameter [11:0]  TEST_PS_BASE   = 12'h100;   // first 32-bit word address in PS BRAM
 
     // assign bram_wrdata_a = TEST_DATA;
@@ -502,19 +609,19 @@
     
 
     // B port unused for now
-    assign bram_addr_b = 12'h0;
-    assign bram_clk_b = out_stream_aclk;
-    assign bram_wrdata_b = 256'h0;
-    assign bram_en_b = 1'b0;
-    assign bram_rst_b = 1'b0;
-    assign bram_we_b = 4'h0;
+    // assign bram_addr_b = 12'h0;
+    // assign bram_clk_b = out_stream_aclk;
+    // assign bram_wrdata_b = 256'h0;
+    // assign bram_en_b = 1'b0;
+    // assign bram_rst_b = 1'b0;
+    // assign bram_we_b = 4'h0;
 
-    assign bram_addr_a = 12'h0;
-    assign bram_clk_a = out_stream_aclk;
-    assign bram_wrdata_a = 256'h0;
-    assign bram_en_a = 1'b0;
-    assign bram_rst_a = 1'b0;
-    assign bram_we_a = 4'h0;
+    // assign bram_addr_a = 12'h0;
+    // assign bram_clk_a = out_stream_aclk;
+    // assign bram_wrdata_a = 256'h0;
+    // assign bram_en_a = 1'b0;
+    // assign bram_rst_a = 1'b0;
+    // assign bram_we_a = 4'h0;
 
     assign bram_addr_a_ps = 12'h0;
     assign bram_clk_a_ps = out_stream_aclk;
