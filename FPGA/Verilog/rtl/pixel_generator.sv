@@ -54,10 +54,10 @@
 
 
     // BRAM Processing System
-    input [31:0]			bram_rddata_a_ps,
+    input [255:0]			bram_rddata_a_ps,
     output [11:0]			bram_addr_a_ps, // address
     output 					bram_clk_a_ps, // clock
-    output [31:0]			bram_wrdata_a_ps, // written DATA into BRAM
+    output [255:0]			bram_wrdata_a_ps, // written DATA into BRAM
     output					bram_en_a_ps, // global enable
     output 					bram_rst_a_ps, // reset	
     output [3:0]			bram_we_a_ps // write enable for each byte
@@ -338,73 +338,99 @@
 wire valid_int = 1'b1;
 
 
-parameter [255:0] TEST_DATA      = 256'hCAFEBEEF_D15EA5ED_DEADBEEF_01234567_89ABCDEF_FEEDFACE_F00DBABE_0BADF00D;
-parameter [11:0]  TEST_INT_ADDR  = 12'h000;   // location in 256-bit BRAM
+// parameter [255:0] TEST_DATA      = 256'hCAFEBEEF_D15EA5ED_DEADBEEF_01234567_89ABCDEF_FEEDFACE_F00DBABE_0BADF00D;
+// parameter [11:0]  TEST_INT_ADDR  = 12'h000;   // location in 256-bit BRAM
 
 
-typedef enum logic {WAIT, WRITING} capture_state;
+// typedef enum logic {WAIT, WRITING} capture_state;
 
-logic valid_col;
-logic write_done;
+// logic valid_col;
+// logic write_done;
 
-capture_state state_fmap;
+// capture_state state_fmap;
 
-always @(posedge out_stream_aclk or negedge axi_resetn) begin
-    if (!axi_resetn) begin
-        state_fmap <= WAIT;
-        valid_col <= 0;
-    end else begin
-        case (state_fmap)
-            WAIT: begin
-                if(regfile[3] == 1'b1) begin
-                    state_fmap <= WRITING;
-                end else begin
-                    state_fmap <= WAIT;
-                    valid_col <= 0;
-                end
-            end
-            WRITING: begin
-                if(!write_done) begin 
-                    state_fmap <= WRITING;
-                    valid_col <= 1;
-                end else begin 
-                    state_fmap <= WAIT;
-                    valid_col <= 1;
-                end
-            end
-        endcase
-    end
-end
+// always @(posedge out_stream_aclk or negedge axi_resetn) begin
+//     if (!axi_resetn) begin
+//         state_fmap <= WAIT;
+//         valid_col <= 0;
+//     end else begin
+//         case (state_fmap)
+//             WAIT: begin
+//                 if(regfile[3] == 1'b1) begin
+//                     state_fmap <= WRITING;
+//                 end else begin
+//                     state_fmap <= WAIT;
+//                     valid_col <= 0;
+//                 end
+//             end
+//             WRITING: begin
+//                 if(!write_done) begin 
+//                     state_fmap <= WRITING;
+//                     valid_col <= 1;
+//                 end else begin 
+//                     state_fmap <= WAIT;
+//                     valid_col <= 1;
+//                 end
+//             end
+//         endcase
+//     end
+// end
 
-assign bram_clk_a = out_stream_aclk;
-assign bram_en_a = 1'b1;
-assign bram_rst_a = 1'b0;
+// assign bram_clk_a = out_stream_aclk;
+// assign bram_en_a = 1'b1;
+// assign bram_rst_a = 1'b0;
 
-logic [15:0] test_data_col [23:0];
+// logic [15:0] test_data_col [23:0];
 
-genvar k;
-generate
-    for (k = 0; k < 24; k++) begin : gen_test_data
-        assign test_data_col[k] = TEST_DATA[k*16 +: 16];
-    end
-endgenerate
+// genvar k;
+// generate
+//     for (k = 0; k < 16; k++) begin : gen_test_data
+//         assign test_data_col[k] = TEST_DATA[k*16 +: 16];
+//     end
+// endgenerate
 
-fmap_capture_256 #(
-    .PIX_H(24),
-    .BASE_ADDR(12'h000)
-) capture_256_bits (
-    .clk(out_stream_aclk),
-    .rst(!periph_resetn),
-    .valid_col(valid_col),
-    .data_col(test_data_col),
+// fmap_capture_256 #(
+//     .PIX_H(24),
+//     .BASE_ADDR(12'h000)
+// ) capture_256_bits (
+//     .clk(out_stream_aclk),
+//     .rst(!periph_resetn),
+//     .valid_col(valid_col),
+//     .data_col(test_data_col),
     
-    // Connect to BRAM port A for writing
+//     // Connect to BRAM port A for writing
+//     .bram_addr_a(bram_addr_a),
+//     .bram_wrdata_a(bram_wrdata_a),
+//     .bram_we_a(bram_we_a),
+//     .write_done(write_done)
+// );
+
+logic start_convolution;
+logic write_done; // Add missing write_done signal declaration
+assign start_convolution = regfile[0];
+
+top_capture #(
+    .DATA_WIDTH(16),
+    .KERNEL_SIZE(5),
+    .STRIDE(1),
+    .PADDING(1),
+    .CONV_OUTPUT(16),
+    .IMAGE_SIZE(28)
+) top_capture_inst (
+    .out_stream_aclk(out_stream_aclk),
+    .periph_resetn(periph_resetn),
+    .start(start_convolution),
+    .write_done(write_done), // Add missing write_done connection
+
+    // BRAM A (capture/write only)
     .bram_addr_a(bram_addr_a),
     .bram_wrdata_a(bram_wrdata_a),
     .bram_we_a(bram_we_a),
-    .write_done(write_done)
-);
 
+    // PS BRAM -> ONLY FOR READING IMAGE
+    .bram_rddata_a_ps(bram_rddata_a_ps),
+    .bram_addr_a_ps(bram_addr_a_ps)
+);
 
 logic [7:0] current_gray_pixel;
 
@@ -438,6 +464,9 @@ top_tiler #(
     .pixel(current_gray_pixel),
     .lastx(lastx),
     .lasty(lasty),
+
+    .x(x),
+    .y(y),
     
     .bram_rdata(bram_rddata_b),
     .bram_addr(bram_addr_b)
@@ -623,12 +652,87 @@ assign b = current_gray_pixel;
     // assign bram_rst_a = 1'b0;
     // assign bram_we_a = 4'h0;
 
-    assign bram_addr_a_ps = 12'h0;
-    assign bram_clk_a_ps = out_stream_aclk;
-    assign bram_wrdata_a_ps = 256'h0;
-    assign bram_en_a_ps = 1'b0;
-    assign bram_rst_a_ps = 1'b0;
-    assign bram_we_a_ps = 4'h0;
+    // BRAM PS logic for writing non-zero pixels
+    // parameter [11:0] PS_BASE_ADDR = 12'h000;  // Starting address for pixel data in PS BRAM
+    
+    // reg [11:0] ps_write_addr;
+    // reg [31:0] ps_write_data;
+    // reg [3:0]  ps_write_enable;
+    // reg pixel_write_pending;
+    
+    // // State machine for writing pixels to PS BRAM
+    // typedef enum logic [1:0] {
+    //     PS_IDLE,
+    //     PS_WRITE_PIXEL,
+    //     PS_WRITE_DONE
+    // } ps_write_state_t;
+    
+    // ps_write_state_t ps_state;
+    
+    // always @(posedge out_stream_aclk or negedge axi_resetn) begin
+    //     if (!axi_resetn) begin
+    //         ps_state <= PS_IDLE;
+    //         ps_write_addr <= PS_BASE_ADDR;
+    //         ps_write_data <= 32'h0;
+    //         ps_write_enable <= 4'h0;
+    //         pixel_write_pending <= 1'b0;
+    //     end else begin
+    //         case (ps_state)
+    //             PS_IDLE: begin
+    //                 ps_write_enable <= 4'h0;
+    //                 // Check if we have a valid non-zero pixel to write
+    //                 if (ready && valid_int && (current_gray_pixel != 8'h0)) begin
+    //                     ps_state <= PS_WRITE_PIXEL;
+    //                     pixel_write_pending <= 1'b1;
+    //                     // Pack pixel data with coordinates into 32-bit word
+    //                     // Format: [7:0] pixel_value, [17:8] x_coordinate, [26:18] y_coordinate, [31:27] unused
+    //                     ps_write_data <= {5'h0, y[8:0], x[9:0], current_gray_pixel};
+    //                 end
+    //             end
+                
+    //             PS_WRITE_PIXEL: begin
+    //                 ps_write_enable <= 4'hF;  // Enable all byte lanes
+    //                 ps_state <= PS_WRITE_DONE;
+    //             end
+                
+    //             PS_WRITE_DONE: begin
+    //                 ps_write_enable <= 4'h0;
+    //                 ps_state <= PS_IDLE;
+    //                 pixel_write_pending <= 1'b0;
+    //                 // Increment address for next pixel (only if we don't exceed BRAM size)
+    //                 if (ps_write_addr < 12'hFFC) begin  // Leave room for 32-bit word
+    //                     ps_write_addr <= ps_write_addr + 12'd4;
+    //                 end
+    //             end
+                
+    //             default: begin
+    //                 ps_state <= PS_IDLE;
+    //                 ps_write_enable <= 4'h0;
+    //             end
+    //         endcase
+    //     end
+    // end
+    
+    // assign bram_addr_a_ps = ps_write_addr;
+    // assign bram_clk_a_ps = out_stream_aclk;
+    // assign bram_wrdata_a_ps = ps_write_data;
+    // assign bram_en_a_ps = 1'b1;
+    // assign bram_rst_a_ps = 1'b0;
+    // assign bram_we_a_ps = ps_write_enable;
 
 
-    endmodule
+    // assign bram_addr_a_ps = 12'h0;
+assign bram_clk_a_ps = out_stream_aclk;
+assign bram_wrdata_a_ps = 256'h0;  // PS BRAM is read-only, so write data is 0
+assign bram_en_a_ps = 1'b1;
+assign bram_rst_a_ps = 1'b0;
+assign bram_we_a_ps = 4'h0;
+
+// Comment out BRAM A assignments since top_capture now drives them
+assign bram_clk_a = out_stream_aclk;
+assign bram_en_a = 1'b1;
+assign bram_rst_a = 1'b0;
+// bram_addr_a, bram_wrdata_a, bram_we_a are now driven by top_capture
+
+
+endmodule

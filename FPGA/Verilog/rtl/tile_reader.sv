@@ -7,6 +7,7 @@ module tile_reader #(
 )(
     input  logic               clk,
     input  logic               rst_n,
+    input  logic               advance_pixel,  // New input to control when to advance
 
     output logic [7:0]         pixel,
     output logic               pixel_valid,
@@ -53,16 +54,15 @@ module tile_reader #(
                     col_buf       <= bram_rdata;
                     col_buf_valid <= 1'b1;
                     row_idx       <= 0;
+                end            STREAM: if (pixel_valid && advance_pixel) begin
+                if (row_idx == TILE_H-1) begin
+                    row_idx  <= 0;
+                    col_idx  <= (col_idx == TILE_W-1) ? 0 : col_idx + 1;
+                    col_buf_valid <= 1'b0;
+                end else begin
+                    row_idx  <= row_idx + 1;
                 end
-                STREAM: if (pixel_valid) begin
-                    if (row_idx == TILE_H-1) begin
-                        row_idx  <= 0;
-                        col_idx  <= (col_idx == TILE_W-1) ? 0 : col_idx + 1;
-                        col_buf_valid <= 1'b0;
-                    end else begin
-                        row_idx  <= row_idx + 1;
-                    end
-                end
+            end
             endcase
         end
     end
