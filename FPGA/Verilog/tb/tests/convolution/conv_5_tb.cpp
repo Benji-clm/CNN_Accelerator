@@ -2,7 +2,7 @@
  *  Verifies the results of the 5x5 convolution module, exits with a 0 on success.
  */
 
-#include "base_testbench.h"
+#include "../base_testbench.h"
 #include <cmath>  // For floating point comparisons
 
 Vdut *top;

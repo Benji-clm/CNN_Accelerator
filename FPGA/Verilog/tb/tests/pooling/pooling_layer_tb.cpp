@@ -6,7 +6,8 @@
  #include <cmath>        // For floating point comparisons
  #include <Imath/half.h>
  #include <array>        // For std::array
- 
+ #include <iostream>
+ #include <iomanip>
  using Imath::half;
  
  Vdut *top;
@@ -84,6 +85,8 @@
  
      // Check all 12 output elements
      for (int i = 0; i < 12; i++) {
+        uint16_t raw_output = top->output_column[i];
+        std::cout << "output_column[" << i << "] =0x" << std::hex << std::setw(4) << raw_output << std::dec << std::endl;
          float expected = 2.0; // Max of [1.0, 2.0, 0.0, 0.0] for each pooling unit
          float actual = fp16_to_float(top->output_column[i]);
          EXPECT_FLOAT_EQ(actual, expected) << "For output_column[" << i << "], expected max = 2.0, got " << actual;

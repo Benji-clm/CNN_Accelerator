@@ -1,59 +1,33 @@
 /*
- *  Verifies the results of the convolution module, exits with a 0 on success.
- */
+*  Verifies the results of the convolution module, exits with a 0 on success.
+*/
 
-#include "base_testbench.h"
-#include <cmath>  // For floating point comparisons
+#include "../base_testbench.h"
+#include <cmath>        // For floating point comparisons
+#include <Imath/half.h> // For accurate FP16 conversion
 
+// Forward declarations
+class Vdut;
+class VerilatedVcdC;
+
+// Global testbench variables
 Vdut *top;
 VerilatedVcdC *tfp;
 unsigned int ticks = 0;
 
-// Helper: Convert float to IEEE 754 half-precision (FP16) bit pattern
+using Imath::half;
+
+// Helper: Convert float to IEEE 754 half-precision (FP16) bit pattern using Imath
 uint16_t float_to_fp16(float value) {
-    // This is a simple conversion for testbench purposes.
-    // For more accurate conversion, use a library or hardware implementation.
-    union { float f; uint32_t u; } v = { value };
-    uint32_t f = v.u;
-    uint32_t sign = (f >> 31) & 0x1;
-    int32_t exp = ((f >> 23) & 0xFF) - 127 + 15;
-    uint32_t frac = (f >> 13) & 0x3FF;
-    if (exp <= 0) {
-        exp = 0;
-        frac = 0;
-    } else if (exp >= 31) {
-        exp = 31;
-        frac = 0;
-    }
-    return (sign << 15) | ((exp & 0x1F) << 10) | frac;
+    half h(value); // Implicitly convert float to half
+    return h.bits(); // Return the 16-bit raw data
 }
 
-// Helper: Convert FP16 bit pattern to float (approximate)
-float fp16_to_float(uint16_t h) {
-    uint32_t sign = (h >> 15) & 0x1;
-    uint32_t exp = (h >> 10) & 0x1F;
-    uint32_t frac = h & 0x3FF;
-    uint32_t f;
-    if (exp == 0) {
-        if (frac == 0) {
-            f = sign << 31;
-        } else {
-            // subnormal
-            exp = 127 - 15 + 1;
-            while ((frac & 0x400) == 0) {
-                frac <<= 1;
-                exp--;
-            }
-            frac &= 0x3FF;
-            f = (sign << 31) | (exp << 23) | (frac << 13);
-        }
-    } else if (exp == 31) {
-        f = (sign << 31) | (0xFF << 23);
-    } else {
-        f = (sign << 31) | ((exp - 15 + 127) << 23) | (frac << 13);
-    }
-    union { uint32_t u; float f; } v = { f };
-    return v.f;
+// Helper: Convert FP16 bit pattern to float using Imath
+float fp16_to_float(uint16_t value) {
+    half h;
+    h.setBits(value); // Directly set the raw bits
+    return (float)h;  // Cast back to float
 }
 
 class ConvolutionTestbench : public BaseTestbench
@@ -69,224 +43,230 @@ protected:
         top->kernel_load = 0;
         top->valid_in = 0;
         top->valid_out = 0;
-        // Output: data_out
     }
 
-    // Helper method to cycle the clock
+    // Helper method to cycle the clock and dump waveform
     void clockTick(int n = 1) {
         for (int i = 0; i < n; i++) {
+            ticks++;
             top->clk = 1;
             top->eval();
-            tfp->dump(ticks++);
-            
+            tfp->dump(ticks);
+
+            ticks++;
             top->clk = 0;
             top->eval();
-            tfp->dump(ticks++);
+            tfp->dump(ticks);
         }
     }
     
-    // Helper method to load 3x3 kernel with FP16 conversion
+    // Helper method to load a 3x3 kernel
     void loadKernel(float kernel[3][3]) {
         top->kernel_load = 1;
         top->valid_in = 1;
         
-        // Load kernel row by row
+        // Load kernel column by column (3 cycles)
         for (int i = 0; i < 3; i++) {
-            top->data_in0 = float_to_fp16(kernel[i][0]);
-            top->data_in1 = float_to_fp16(kernel[i][1]);
-            top->data_in2 = float_to_fp16(kernel[i][2]);
+            top->data_in0 = float_to_fp16(kernel[0][i]);
+            top->data_in1 = float_to_fp16(kernel[1][i]);
+            top->data_in2 = float_to_fp16(kernel[2][i]);
             clockTick();
         }
         
+        // De-assert control signals
         top->kernel_load = 0;
-        clockTick(2); // Extra cycles to settle
+        top->valid_in = 0;
+        clockTick(); // One cycle to ensure control signals are registered
     }
     
-    // Helper method to process image data with FP16 conversion
+    // Helper method to process a 3x3 image patch
     void processImage(float image[3][3]) {
         top->valid_in = 1;
         
-        // Process image row by row
+        // Stream image data column by column (3 cycles)
         for (int i = 0; i < 3; i++) {
-            top->data_in0 = float_to_fp16(image[i][0]);
-            top->data_in1 = float_to_fp16(image[i][1]);
-            top->data_in2 = float_to_fp16(image[i][2]);
+            top->data_in0 = float_to_fp16(image[0][i]);
+            top->data_in1 = float_to_fp16(image[1][i]);
+            top->data_in2 = float_to_fp16(image[2][i]);
             clockTick();
         }
         
+        // De-assert valid_in after the last data is sent
         top->valid_in = 0;
-        top->valid_out = 1; // Indicate that processing is done
-        clockTick(2); // Extra cycles to allow full computation
     }
     
-    // Helper to check if float values are close enough (for FP comparison)
-    bool isClose(float a, float b, float tolerance = 0.001) {
-        return fabs(a - b) < tolerance;
+    // Helper to check if float values are close enough
+    bool isClose(float a, float b, float tolerance = 0.01) {
+        return std::abs(a - b) <= tolerance;
     }
 };
 
 TEST_F(ConvolutionTestbench, IdentityKernelTest)
 {
-    // Reset the module
+    // 1. Reset the module
     top->rst = 1;
     clockTick(2);
     top->rst = 0;
     clockTick();
     
-    // Identity kernel (only middle element is 1)
+    // 2. Define Kernel and Image
     float kernel[3][3] = {
         {0.0f, 0.0f, 0.0f},
         {0.0f, 1.0f, 0.0f},
         {0.0f, 0.0f, 0.0f}
     };
-    
-    // Test image data
     float image[3][3] = {
         {10.0f, 20.0f, 30.0f},
         {40.0f, 50.0f, 60.0f},
         {70.0f, 80.0f, 90.0f}
     };
     
-    // Load the kernel
+    // 3. Load Kernel and Process Image
     loadKernel(kernel);
-    
-    // Process the image
     processImage(image);
     
-    // With identity kernel, output should match the center pixel (50)
-    float expected = 50.0f;
+    clockTick();         
+    top->valid_out = 1; 
+    clockTick();    
+    top->valid_out = 0;
+    // 5. Check the result
+    uint16_t expected = float_to_fp16(50.0f);
     float actual = fp16_to_float(top->data_out);
-    EXPECT_TRUE(isClose(actual, expected))
+    EXPECT_EQ(top->data_out, expected)
         << "Expected " << expected << " but got " << actual;
+
 }
 
 TEST_F(ConvolutionTestbench, EdgeDetectionKernelTest)
 {
-    // Reset the module
+    // 1. Reset
     top->rst = 1;
     clockTick(2);
     top->rst = 0;
     clockTick();
     
-    // Horizontal edge detection kernel
+    // 2. Define Kernel and Image
     float kernel[3][3] = {
-        {1.0f, 1.0f, 1.0f},
-        {0.0f, 0.0f, 0.0f},
+        {1.0f,  1.0f,  1.0f},
+        {0.0f,  0.0f,  0.0f},
         {-1.0f, -1.0f, -1.0f}
     };
-    
-    // Test image data
     float image[3][3] = {
         {10.0f, 20.0f, 30.0f},
         {40.0f, 50.0f, 60.0f},
         {70.0f, 80.0f, 90.0f}
     };
     
-    // Expected result: (10+20+30) - (70+80+90) = 60 - 240 = -180
-    
-    // Load the kernel
+    // 3. Load and Process
     loadKernel(kernel);
-    
-    // Process the image
     processImage(image);
     
-    // Check the result - negative value should be handled correctly
+    // 4. Wait for pipeline
+    clockTick();
+    top->valid_out = 1;
+    clockTick();
+    top->valid_out = 0;
+    
+    // 5. Check result: (10+20+30) - (70+80+90) = 60 - 240 = -180
     float expected = -180.0f;
     float actual = fp16_to_float(top->data_out);
-    EXPECT_TRUE(isClose(actual, expected))
+    EXPECT_FLOAT_EQ(actual, expected)// Larger tolerance for larger numbers
         << "Expected " << expected << " but got " << actual;
 }
 
-TEST_F(ConvolutionTestbench, BlurKernelTest)
-{
-    // Reset the module
-    top->rst = 1;
-    clockTick(2);
-    top->rst = 0;
-    clockTick();
-    
-    // Blur kernel (averaging)
-    float kernel[3][3] = {
-        {1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f}
-    };
-    
-    // Test image data with constant values
-    float image[3][3] = {
-        {5.0f, 5.0f, 5.0f},
-        {5.0f, 5.0f, 5.0f},
-        {5.0f, 5.0f, 5.0f}
-    };
-    
-    // Expected result: 9 * 5 = 45
-    
-    // Load the kernel
-    loadKernel(kernel);
-    
-    // Process the image
-    processImage(image);
-    
-    // Check the result
-    float expected = 45.0f;
-    float actual = fp16_to_float(top->data_out);
-    EXPECT_TRUE(isClose(actual, expected))
-        << "Expected " << expected << " but got " << actual;
-}
-
-// Additional test for floating point precision
 TEST_F(ConvolutionTestbench, FloatingPointValueTest)
 {
-    // Reset the module
+    // 1. Reset
     top->rst = 1;
     clockTick(2);
     top->rst = 0;
     clockTick();
     
-    // Kernel with fractional values
+    // 2. Define Kernel and Image
     float kernel[3][3] = {
         {0.5f, 0.5f, 0.5f},
         {0.5f, 0.5f, 0.5f},
         {0.5f, 0.5f, 0.5f}
     };
-    
-    // Test image data with fractional values
     float image[3][3] = {
         {1.5f, 1.5f, 1.5f},
         {1.5f, 1.5f, 1.5f},
         {1.5f, 1.5f, 1.5f}
     };
-    
-    // Expected result: 9 * 0.5 * 1.5 = 6.75
-    
-    // Load the kernel
+
+    // 3. Load and Process
     loadKernel(kernel);
-    
-    // Process the image
     processImage(image);
     
-    // Check the result
+    // 4. Wait for pipeline
+    clockTick();
+    top->valid_out = 1;
+    clockTick();
+    top->valid_out = 0;
+    
+    // 5. Check result: 9 * 0.5 * 1.5 = 6.75
     float expected = 6.75f;
     float actual = fp16_to_float(top->data_out);
-    EXPECT_TRUE(isClose(actual, expected))
+    EXPECT_FLOAT_EQ(actual, expected)
+        << "Expected " << expected << " but got " << actual;
+}
+
+TEST_F(ConvolutionTestbench, XEdgeDetectionTest)
+{
+    // 1. Reset
+    top->rst = 1;
+    clockTick(2);
+    top->rst = 0;
+    clockTick();
+    
+    // 2. Define Kernel and Image
+    float kernel[3][3] = {
+        {1.0f, 0.0f, -1.0f},
+        {2.0f, 0.0f, -2.0f},
+        {1.0f, 0.0f, -1.0f}
+    };
+    float image[3][3] = {
+        {0.0f, 1.0f, 2.0f},
+        {1.0f, 2.0f, 3.0f},
+        {2.0f, 3.0f, 4.0f}
+    };
+
+    // 3. Load and Process
+    loadKernel(kernel);
+    processImage(image);
+    
+    // 4. Wait for pipeline
+    clockTick();
+    top->valid_out = 1;
+    clockTick();
+    top->valid_out = 0;
+    
+    // 5. Check result: 9 * 0.5 * 1.5 = 6.75
+    float expected = -8.0f;
+    float actual = fp16_to_float(top->data_out);
+    EXPECT_FLOAT_EQ(actual, expected)
         << "Expected " << expected << " but got " << actual;
 }
 
 int main(int argc, char **argv)
 {
+    // Initialize Verilator
+    Verilated::commandArgs(argc, argv);
     top = new Vdut;
     tfp = new VerilatedVcdC;
 
+    // Enable tracing
     Verilated::traceEverOn(true);
     top->trace(tfp, 99);
     tfp->open("convolution_waveform.vcd");
 
+    // Initialize Google Test
     testing::InitGoogleTest(&argc, argv);
-    auto res = RUN_ALL_TESTS();
+    int res = RUN_ALL_TESTS();
 
+    // Cleanup
     top->final();
     tfp->close();
-
     delete top;
     delete tfp;
 

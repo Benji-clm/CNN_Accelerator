@@ -3,7 +3,7 @@
  *  Verifies the results of the control_cv module, exits with a 0 on success.
  */
 
-#include "base_testbench.h"
+#include "../base_testbench.h"
 
 Vdut *top;
 VerilatedVcdC *tfp;

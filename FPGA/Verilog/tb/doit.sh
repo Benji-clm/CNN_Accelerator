@@ -6,7 +6,7 @@
 # Constants
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 TEST_FOLDER=$(realpath "$SCRIPT_DIR/tests")
-RTL_FOLDER=$(realpath "$SCRIPT_DIR/../rtl")
+ROOT_RTL_FOLDER=$(realpath "$SCRIPT_DIR/../rtl")
 GREEN=$(tput setaf 2)
 RED=$(tput setaf 1)
 RESET=$(tput sgr0)
@@ -44,7 +44,7 @@ for file in "${files[@]}"; do
     echo "RTL_FOLDER: $RTL_FOLDER"
 
     name=$(basename "$file" _tb.cpp | cut -f1 -d\-)
-    
+    echo "Name: $name"
     # If verify.cpp -> we are testing the top module
     if [ $name == "verify.cpp" ]; then
         name="top"
@@ -54,9 +54,9 @@ for file in "${files[@]}"; do
     verilog_file=$(find "${RTL_FOLDER}" -type f -name "${name}.sv" | head -n 1)
     
     # Build include paths for all RTL subdirectories
-    INCLUDE_PATHS="-y ${RTL_FOLDER}"
-    for dir in $(find "${RTL_FOLDER}" -type d); do
-        if [ "$dir" != "${RTL_FOLDER}" ]; then
+    INCLUDE_PATHS="-y ${ROOT_RTL_FOLDER}"
+    for dir in $(find "${ROOT_RTL_FOLDER}" -type d); do
+        if [ "$dir" != "${ROOT_RTL_FOLDER}" ]; then
             INCLUDE_PATHS="${INCLUDE_PATHS} -y $dir"
         fi
     done
