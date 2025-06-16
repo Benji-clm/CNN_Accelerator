@@ -1,4 +1,6 @@
-module pooling_layer (
+module pooling_layer #(
+    parameter WINDOWS     = 12
+)(
     input logic clk,
     input logic rst,
     input logic valid_in,
@@ -16,7 +18,7 @@ module pooling_layer (
         .valid_out(valid_out)
     );
     // Combinational logic for 2x2 max pooling
-    for (genvar j = 0; j < 12; j++) begin : pool_gen
+    for (genvar j = 0; j < WINDOWS; j++) begin : pool_gen
         pooling_2x2 pool(
             .clk(clk),
             .rst(rst),
