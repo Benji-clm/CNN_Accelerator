@@ -40,11 +40,9 @@
          top->valid_in = 0;
      }
  
-     void drive_wide_column(const std::array<uint16_t, 24>& column_data) {
-        for (int i = 0; i < 12; ++i) {
-            uint32_t low_word = column_data[i * 2];
-            uint32_t high_word = column_data[i * 2 + 1];
-            top->input_column[i] = (high_word << 16) | low_word;
+     void drive_column(const std::array<uint16_t, 24>& column_data) {
+        for (int i = 0; i < 24; ++i) {
+            top->input_column[i] = column_data[i];
         }
     }
  };
@@ -58,7 +56,7 @@
          input_first[i] = float_to_fp16(1.0);
          input_first[i + 1] = float_to_fp16(2.0);
      }
-     drive_wide_column(input_first);
+     drive_column(input_first);
      top->valid_in = 1;
      runSimulation(1);
  
@@ -69,7 +67,7 @@
          input_invalid[i] = float_to_fp16(3.0);
          input_invalid[i + 1] = float_to_fp16(4.0);
      }
-     drive_wide_column(input_invalid);
+     drive_column(input_invalid);
      top->eval();
      EXPECT_EQ(top->valid_out, 0) << "valid_out should be low during invalid cycle";
      runSimulation(1);
@@ -78,7 +76,7 @@
      top->valid_in = 1;
      std::array<uint16_t, 24> input_second;
      input_second.fill(float_to_fp16(0.0));
-     drive_wide_column(input_second);
+     drive_column(input_second);
      runSimulation(1); // Run for one cycle to allow output to be valid
      
      EXPECT_EQ(top->valid_out, 1) << "valid_out should be high after two valid inputs";
@@ -104,7 +102,7 @@
          input_first[i] = float_to_fp16(1.0);
          input_first[i + 1] = float_to_fp16(2.0);
      }
-     drive_wide_column(input_first);
+     drive_column(input_first);
      top->valid_in = 1;
      runSimulation(1);
  
@@ -115,7 +113,7 @@
          input_invalid[i] = float_to_fp16(3.0);
          input_invalid[i + 1] = float_to_fp16(4.0);
      }
-     drive_wide_column(input_invalid);
+     drive_column(input_invalid);
      top->eval();
      EXPECT_EQ(top->valid_out, 0) << "valid_out should be low during invalid cycle";
      runSimulation(1);
@@ -127,7 +125,7 @@
          input_second[i] = float_to_fp16(10.0);
          input_second[i + 1] = float_to_fp16(1.0);
      }
-     drive_wide_column(input_second);
+     drive_column(input_second);
      runSimulation(1);
      EXPECT_EQ(top->valid_out, 1) << "valid_out should be high after two valid inputs";
  

@@ -4,9 +4,9 @@ module pooling_layer #(
     input logic clk,
     input logic rst,
     input logic valid_in,
-    input logic [23:0][15:0] input_column,
+    input logic [15:0] input_column [WINDOWS * 2 - 1:0],
     output logic valid_out,
-    output logic [11:0][15:0] output_column
+    output logic [15:0] output_column [WINDOWS - 1:0]
 );
 
     logic store;

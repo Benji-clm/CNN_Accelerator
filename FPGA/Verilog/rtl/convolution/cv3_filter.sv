@@ -13,15 +13,13 @@ module cv3_filter #(
 
     // --- Data Inputs ---
     // A 12-element column from a conv_0 layer
-    input logic [INPUT_COL_SIZE-1:0][DATA_WIDTH-1:0] input_column,
+    input logic [DATA_WIDTH-1:0] input_column [INPUT_COL_SIZE-1:0],
     // A 3-element column of the kernel to be loaded
-    input logic [DATA_WIDTH-1:0] kernel_column_0,
-    input logic [DATA_WIDTH-1:0] kernel_column_1,
-    input logic [DATA_WIDTH-1:0] kernel_column_2,
+    input logic [DATA_WIDTH-1:0] kernel_column [KERNEL_SIZE-1:0],
 
     // --- Data Outputs ---
     // The resulting 10-element output column
-    output logic [PARALLEL_UNITS-1:0][DATA_WIDTH-1:0] output_column,
+    output logic [DATA_WIDTH-1:0] output_column [PARALLEL_UNITS-1:0],
     // Asserted when the output_column data is valid
     output logic valid_out
 );
@@ -96,10 +94,17 @@ module cv3_filter #(
             
             // Temporary wire to hold the 3 input data elements for each conv_3 instance.
             // This selects the appropriate 3-element slice from the input column.
-            wire [KERNEL_SIZE-1:0][DATA_WIDTH-1:0] conv_data_slice;
+            wire [DATA_WIDTH-1:0] conv_data_slice [KERNEL_SIZE-1:0];
             assign conv_data_slice[0] = input_column[i];
             assign conv_data_slice[1] = input_column[i+1];
             assign conv_data_slice[2] = input_column[i+2];
+            wire [DATA_WIDTH-1:0] muxed_data_in [KERNEL_SIZE-1:0];
+        
+            // Use a second generate loop to create the element-wise multiplexers.
+            genvar j;
+            for (j = 0; j < KERNEL_SIZE; j = j + 1) begin : gen_mux
+                assign muxed_data_in[j] = kernel_load ? kernel_column[j] : conv_data_slice[j];
+            end
 
             // Instantiate the 3x3 convolution filter
             conv_3 #(
@@ -111,10 +116,7 @@ module cv3_filter #(
 
                 // When loading kernel, all instances get the same kernel column.
                 // When processing, each instance gets its unique slice of the image.
-                .data_in0(kernel_load ? kernel_column_0 : conv_data_slice[0]),
-                .data_in1(kernel_load ? kernel_column_1 : conv_data_slice[1]),
-                .data_in2(kernel_load ? kernel_column_2 : conv_data_slice[2]),
-
+                .data_in(muxed_data_in),
                 .kernel_load(kernel_load),
                 .valid_in(valid_in),
                 .valid_out(computation_started_d1), // Controlled by the layer's controller

@@ -8,9 +8,7 @@ module conv_3 #(
     input logic rst,
 
     // Input data streams (representing one column of the image)
-    input logic [DATA_WIDTH-1:0] data_in0,
-    input logic [DATA_WIDTH-1:0] data_in1,
-    input logic [DATA_WIDTH-1:0] data_in2,
+    input logic [DATA_WIDTH-1:0] data_in [KERNEL_SIZE - 1: 0],
 
     // Control signals
     input logic kernel_load, // High to load kernel weights, low to process image data
@@ -25,13 +23,13 @@ module conv_3 #(
     localparam DATA_ARRAY_WIDTH = DATA_WIDTH * KERNEL_SIZE;
 
     // Arrays for kernel weights and image data buffer (3x3 window)
-    logic signed [DATA_ARRAY_WIDTH-1:0] kernel_matrix [0:KERNEL_SIZE-1];
-    logic signed [DATA_ARRAY_WIDTH-1:0] image_buffer [0:KERNEL_SIZE-1];
+    logic [DATA_ARRAY_WIDTH-1:0] kernel_matrix [0:KERNEL_SIZE-1];
+    logic [DATA_ARRAY_WIDTH-1:0] image_buffer [0:KERNEL_SIZE-1];
 
     // Output register that is updated based on the external valid_out signal
-    logic signed [DATA_WIDTH-1:0] conv_reg;
+    logic [DATA_WIDTH-1:0] conv_reg;
     // Register to hold the final result of the convolution from the adder tree
-    logic signed [DATA_WIDTH-1:0] result_reg;
+    logic [DATA_WIDTH-1:0] result_reg;
 
     // Combinational assignment of the output register to the port
     assign data_out = conv_reg;
@@ -55,13 +53,13 @@ module conv_3 #(
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     kernel_matrix[i] <= kernel_matrix[i+1];
                 end
-                kernel_matrix[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
+                kernel_matrix[KERNEL_SIZE-1] <= {data_in[2], data_in[1], data_in[0]};
             end else begin
                 // Load image data: shift rows up and load new row at the bottom
                 for (int i = 0; i < KERNEL_SIZE-1; i++) begin
                     image_buffer[i] <= image_buffer[i+1];
                 end
-                image_buffer[KERNEL_SIZE-1] <= {data_in2, data_in1, data_in0};
+                image_buffer[KERNEL_SIZE-1] <= {data_in[2], data_in[1], data_in[0]};
             end
         end
     end
@@ -80,13 +78,13 @@ module conv_3 #(
     // --- Multiply and Accumulate (MAC) Logic ---
 
     // Array to hold the 9 intermediate multiplication results
-    logic signed [DATA_WIDTH-1:0] mul_results[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
+    logic [DATA_WIDTH-1:0] mul_results[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
 
     // Adder tree intermediate summation wires
-    logic signed [DATA_WIDTH-1:0] add_stage1[4:0];
-    logic signed [DATA_WIDTH-1:0] add_stage2[2:0];
-    logic signed [DATA_WIDTH-1:0] add_stage3[1:0];
-    logic signed [DATA_WIDTH-1:0] final_sum;
+    logic [DATA_WIDTH-1:0] add_stage1[4:0];
+    logic [DATA_WIDTH-1:0] add_stage2[2:0];
+    logic [DATA_WIDTH-1:0] add_stage3[1:0];
+    logic [DATA_WIDTH-1:0] final_sum;
 
 
     // Generate 3x3 = 9 multipliers and the adder tree structure
