@@ -1,8 +1,7 @@
 module conv_3 #(
     // Parameters for configuring the convolution operation
     parameter DATA_WIDTH = 16, // Data width for each pixel/weight (e.g., 16 for FP16)
-    parameter KERNEL_SIZE = 3,  // Size of the convolution kernel (3 for a 3x3 kernel)
-    parameter STRIDE = 1       // Stride of the convolution (for documentation, not used in this core logic)
+    parameter KERNEL_SIZE = 3 // Size of the convolution kernel (3 for a 3x3 kernel)
 )(
     input logic clk,
     input logic rst,
@@ -19,12 +18,8 @@ module conv_3 #(
     output logic [DATA_WIDTH-1:0] data_out
 );
 
-    // Constant for the total number of bits in a row of the kernel/image buffer
-    localparam DATA_ARRAY_WIDTH = DATA_WIDTH * KERNEL_SIZE;
-
-    // Arrays for kernel weights and image data buffer (3x3 window)
-    logic [DATA_ARRAY_WIDTH-1:0] kernel_matrix [0:KERNEL_SIZE-1];
-    logic [DATA_ARRAY_WIDTH-1:0] image_buffer [0:KERNEL_SIZE-1];
+    logic [DATA_WIDTH-1:0] kernel_matrix [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
+    logic [DATA_WIDTH-1:0] image_buffer  [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
 
     // Output register that is updated based on the external valid_out signal
     logic [DATA_WIDTH-1:0] conv_reg;
@@ -40,8 +35,10 @@ module conv_3 #(
         if (rst) begin
             // Reset kernel and image buffers to all zeros
             for (int i = 0; i < KERNEL_SIZE; i++) begin
-                kernel_matrix[i] <= '0;
-                image_buffer[i]  <= '0;
+                for (int j = 0; j < KERNEL_SIZE; j++) begin
+                    kernel_matrix[i][j] <= '0;
+                    image_buffer[i][j]  <= '0;
+                end
             end
             // Reset convolution output register
             conv_reg <= '0;
@@ -50,16 +47,20 @@ module conv_3 #(
         else if (valid_in) begin
             if (kernel_load) begin
                 // Load kernel data: shift rows up and load new row at the bottom
-                for (int i = 0; i < KERNEL_SIZE-1; i++) begin
-                    kernel_matrix[i] <= kernel_matrix[i+1];
+                for (int i = 0; i < KERNEL_SIZE - 1; i++) begin
+                    kernel_matrix[i] <= kernel_matrix[i+1]; // Assign whole row
                 end
-                kernel_matrix[KERNEL_SIZE-1] <= {data_in[2], data_in[1], data_in[0]};
+                for (int j = 0; j < KERNEL_SIZE; j++) begin
+                    kernel_matrix[KERNEL_SIZE-1][j] <= data_in[j];
+                end
             end else begin
                 // Load image data: shift rows up and load new row at the bottom
-                for (int i = 0; i < KERNEL_SIZE-1; i++) begin
-                    image_buffer[i] <= image_buffer[i+1];
+                for (int i = 0; i < KERNEL_SIZE - 1; i++) begin
+                    image_buffer[i] <= image_buffer[i+1]; // Assign whole row
                 end
-                image_buffer[KERNEL_SIZE-1] <= {data_in[2], data_in[1], data_in[0]};
+                for (int j = 0; j < KERNEL_SIZE; j++) begin
+                    image_buffer[KERNEL_SIZE-1][j] <= data_in[j];
+                end
             end
         end
     end
@@ -93,10 +94,11 @@ module conv_3 #(
         // Instantiate 9 FP16 multipliers
         for (k = 0; k < KERNEL_SIZE; k++) begin : gen_row
             for (l = 0; l < KERNEL_SIZE; l++) begin : gen_col
-                // Extract individual 16-bit elements from the packed arrays
-                // Note: The indexing is reversed to match typical matrix representation (0,0 is top-left)
-                wire [DATA_WIDTH-1:0] img_element    = image_buffer[k][(KERNEL_SIZE-1-l)*DATA_WIDTH +: DATA_WIDTH];
-                wire [DATA_WIDTH-1:0] kernel_element = kernel_matrix[k][(KERNEL_SIZE-1-l)*DATA_WIDTH +: DATA_WIDTH];
+                
+                // With unpacked 2D arrays, element access is direct and clear.
+                // No more complex bit-slicing is needed.
+                wire [DATA_WIDTH-1:0] img_element    = image_buffer[k][l];
+                wire [DATA_WIDTH-1:0] kernel_element = kernel_matrix[k][l];
                 
                 // Instantiate multiplier (ensure port names match your mulfp16 module)
                 mulfp16 mul_inst (

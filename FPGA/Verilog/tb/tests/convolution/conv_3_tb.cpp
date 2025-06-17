@@ -37,9 +37,9 @@ protected:
     {
         top->clk = 0;
         top->rst = 1;
-        top->data_in0 = 0;
-        top->data_in1 = 0;
-        top->data_in2 = 0;
+        top->data_in[0] = 0;
+        top->data_in[1] = 0;
+        top->data_in[2] = 0;
         top->kernel_load = 0;
         top->valid_in = 0;
         top->valid_out = 0;
@@ -67,9 +67,9 @@ protected:
         
         // Load kernel column by column (3 cycles)
         for (int i = 0; i < 3; i++) {
-            top->data_in0 = float_to_fp16(kernel[0][i]);
-            top->data_in1 = float_to_fp16(kernel[1][i]);
-            top->data_in2 = float_to_fp16(kernel[2][i]);
+            top->data_in[0] = float_to_fp16(kernel[0][i]);
+            top->data_in[1] = float_to_fp16(kernel[1][i]);
+            top->data_in[2] = float_to_fp16(kernel[2][i]);
             clockTick();
         }
         
@@ -85,9 +85,9 @@ protected:
         
         // Stream image data column by column (3 cycles)
         for (int i = 0; i < 3; i++) {
-            top->data_in0 = float_to_fp16(image[0][i]);
-            top->data_in1 = float_to_fp16(image[1][i]);
-            top->data_in2 = float_to_fp16(image[2][i]);
+            top->data_in[0] = float_to_fp16(image[0][i]);
+            top->data_in[1] = float_to_fp16(image[1][i]);
+            top->data_in[2] = float_to_fp16(image[2][i]);
             clockTick();
         }
         
@@ -96,7 +96,7 @@ protected:
     }
     
     // Helper to check if float values are close enough
-    bool isClose(float a, float b, float tolerance = 0.01) {
+    bool isClose(float a, float b, float tolerance = 0.001) {
         return std::abs(a - b) <= tolerance;
     }
 };
