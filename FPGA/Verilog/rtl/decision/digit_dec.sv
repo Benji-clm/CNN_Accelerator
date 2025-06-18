@@ -24,6 +24,7 @@ module digit_dec #(
 
     localparam int PADDED  = 1 << $clog2(N_MATS);
     localparam int STAGES  = $clog2(PADDED);
+    localparam logic [DATA_WIDTH-1:0] NEG_INF = 16'hFC00; // Define -Inf for FP16
 
     pair_t stage0 [PADDED];
 
@@ -32,10 +33,10 @@ module digit_dec #(
         for (i = 0; i < PADDED; i++) begin : g_in
             always_ff @(posedge clk) begin
                 if (rst) begin
-                    stage0[i].val <= '0;
+                    stage0[i].val <= '0; // Or NEG_INF if you want to reset to -Inf
                     stage0[i].idx <= '0;
                 end else if (valid_in) begin
-                    stage0[i].val <= (i < N_MATS) ? in_sum[i] : '0;
+                    stage0[i].val <= (i < N_MATS) ? in_sum[i] : NEG_INF;
                     stage0[i].idx <= i[IDX_W-1:0];
                 end
             end

@@ -45,7 +45,7 @@ protected:
     static constexpr int KERNEL_SIZE = 4;
     static constexpr int NUM_CHANNELS = 10;
     static constexpr int NUM_INPUT_CHANNELS = 8;
-    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1); // Should be 2
+    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1) / 2; // Should be 2
 
     // Type definitions for clarity
     using Image = std::vector<std::vector<float>>;
@@ -73,7 +73,7 @@ protected:
             top->clk = 1;
             top->eval();
             if (top->valid_out) {
-                captureAllOutputs();
+                captureOutput();
             }
             tfp->dump(ticks);
 
@@ -116,21 +116,20 @@ protected:
         output_col_idx = 0;
     }
 
-    void captureOutput(int ch, int col_index) {
-        for (int i = 0; i < OUT_SIZE; i++) {
-            dut_output_maps[ch][i][col_index] = fp16_to_float(top->output_columns[ch][i]);
-        }
+    void captureOutput() {
+        EXPECT_EQ( 0xB9CE, top->max);
+        EXPECT_EQ( 0, top->index);
     }
 
-    void captureAllOutputs() {
-        if (output_col_idx < OUT_SIZE) {
-            // Iterate over each of the 8 output channels
-            for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
-                captureOutput(ch, output_col_idx);
-            }
-            output_col_idx++;
-        }
-    }
+    // void captureAllOutputs() {
+    //     if (output_col_idx < OUT_SIZE) {
+    //         // Iterate over each of the 8 output channels
+    //         for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+    //             captureOutput(ch, output_col_idx);
+    //         }
+    //         output_col_idx++;
+    //     }
+    // }
 
     // --- Utility to print a feature map ---
     void printFeatureMap(int channel_idx) {
@@ -187,14 +186,10 @@ TEST_F(ConvLayerTestbench, StreamImageAndCaptureOutput) {
     
     // 4. Add extra clock ticks to flush the pipeline completely
     // The latency is dependent on the internal cv3_channel. A few extra cycles are safe.
-    clockTick(10); 
-    std::cout << "Finished streaming. " << output_col_idx << " output columns were captured." << std::endl;
-
-    // 5. Print a sample of the captured output for visual verification
-    ASSERT_EQ(output_col_idx, OUT_SIZE) << "Incorrect number of output columns were captured.";
     
-    printFeatureMap(0); // Print a sample from the first channel's output
-    printFeatureMap(9); // Print a sample from the last channel's output
+    std::cout << "Finished streaming. " << output_col_idx << " output columns were captured." << std::endl;    
+    clockTick(10); 
+
 }
 
 // --- Main Function ---

@@ -64,7 +64,7 @@ always_comb begin
     next_state = current_state;
     case (current_state)
         IDLE:    if (valid_in) next_state = LOAD_2;
-        LOAD_2:  next_state = OUTPUT;
+        LOAD_2:  if (valid_in) next_state = OUTPUT;
         OUTPUT:  next_state = IDLE;
     endcase
 end

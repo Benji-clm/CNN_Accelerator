@@ -4,10 +4,9 @@ module conv_layer_2 #(
     parameter INPUT_COL_SIZE       = 5,
     parameter NUM_CHANNELS         = 10,
     parameter INPUT_CHANNEL_NUMBER = 8 //For testing purpose, halve the input channel number
-)(
+)(                                              
     input logic clk,
     input logic rst,
-
     // --- Control Signals ---
     input logic valid_in,
 
@@ -17,7 +16,8 @@ module conv_layer_2 #(
 
     // --- Data Outputs ---
     // Output size updated to reflect no pooling layer.
-    output logic [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0][(INPUT_COL_SIZE - KERNEL_SIZE + 1) - 1:0],
+    output logic [DATA_WIDTH-1:0] max,
+    output logic [$clog2(NUM_CHANNELS)-1:0] index,
     output logic valid_out
 );
 
@@ -144,6 +144,7 @@ module conv_layer_2 #(
     //================================================================
     logic kernel_load_r;
     logic channel_valid_in;
+    logic [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0];
 
     // --- State Machine for Kernel Loading ---
     typedef enum logic [1:0] {IDLE, LOAD, RUN} state_t;
@@ -217,6 +218,8 @@ module conv_layer_2 #(
     //================================================================
     generate
         for (genvar ch_idx = 0; ch_idx < NUM_CHANNELS; ch_idx++) begin : gen_channel
+            wire valid_out_ch;
+            wire [DATA_WIDTH - 1:0] column_ch [INPUT_COL_SIZE - KERNEL_SIZE : 0];
             // Instantiating the new cv4_channel module
             cv4_channel #(
                 .DATA_WIDTH(DATA_WIDTH),
@@ -234,16 +237,39 @@ module conv_layer_2 #(
                 .kernel_inputs(kernel_wires[ch_idx]),
 
                 // Connect output directly, no ReLU or pooling
-                .output_column(output_columns[ch_idx]),
-                .valid_out(valid_out_wires[ch_idx])
+                .output_column(column_ch),
+                .valid_out(valid_out_ch)
             );
 
+            reduction #(
+                .DATA_WIDTH(DATA_WIDTH),
+                .mat_height((INPUT_COL_SIZE - KERNEL_SIZE - 1) / 2)
+            )redu(
+                .clk(clk),
+                .rst(rst),
+                .valid_in(valid_out_ch),
+                .column(column_ch),
+                .sum(output_columns[ch_idx]),
+                .valid_out(valid_out_wires[ch_idx])
+            );
+        
         end
     endgenerate
 
     // All valid_out signals from the channels should be synchronous.
     // We can assign one of them to the final output valid signal.
-    assign valid_out = valid_out_wires[0];
+    digit_dec #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .N_MATS(NUM_CHANNELS)
+    )digit(
+        .clk(clk),
+        .rst(rst),
+        .valid_in(valid_out_wires[0]),
+        .in_sum(output_columns),
+        .max(max),
+        .index(index),
+        .valid_out(valid_out)
+    );
 
 
 endmodule
