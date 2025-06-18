@@ -3,7 +3,7 @@ module cv3_channel #(
     parameter KERNEL_SIZE             = 3,
     parameter INPUT_COL_SIZE          = 12,
     parameter INPUT_CHANNEL_NUMBER    = 4,
-    parameter [DATA_WIDTH-1:0] BIAS   = 16'h0000,
+    parameter [DATA_WIDTH-1:0] BIAS   = 16'hb06a,
     localparam PARALLEL_UNITS         = INPUT_COL_SIZE - KERNEL_SIZE + 1
 )(
     input logic clk,

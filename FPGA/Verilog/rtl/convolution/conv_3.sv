@@ -9,10 +9,10 @@ module conv_3 #(
     input logic [DATA_WIDTH-1:0] data_in [KERNEL_SIZE - 1: 0],
 
     // Control signals
-    input logic kernel_load,
-    input logic valid_in,
-    // **FIXED**: This MUST be an input, controlled by the parent module.
-    input logic valid_out,
+    input logic kernel_load, // High to load kernel weights, low to process image data
+    input logic valid_in,    // High when input data is valid
+    input logic valid_out,   // FIXED: Port direction is now output
+    // Input signal to control when the output is latched
 
     // Output data
     output logic [DATA_WIDTH-1:0] data_out
