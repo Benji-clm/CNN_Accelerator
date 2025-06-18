@@ -1,8 +1,8 @@
 module conv_layer_2 #(
     parameter DATA_WIDTH           = 16,
     parameter KERNEL_SIZE          = 4,
-    parameter INPUT_COL_SIZE       = 12,
-    parameter NUM_CHANNELS         = 5,
+    parameter INPUT_COL_SIZE       = 5,
+    parameter NUM_CHANNELS         = 10,
     parameter INPUT_CHANNEL_NUMBER = 8 //For testing purpose, halve the input channel number
 )(
     input logic clk,

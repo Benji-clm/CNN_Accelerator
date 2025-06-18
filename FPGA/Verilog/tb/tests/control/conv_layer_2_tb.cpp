@@ -43,9 +43,9 @@ protected:
     static constexpr int DATA_WIDTH = 16;
     static constexpr int IMG_SIZE = 5;
     static constexpr int KERNEL_SIZE = 4;
-    static constexpr int NUM_CHANNELS = 5;
+    static constexpr int NUM_CHANNELS = 10;
     static constexpr int NUM_INPUT_CHANNELS = 8;
-    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1)/2; // Should be 2
+    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1); // Should be 2
 
     // Type definitions for clarity
     using Image = std::vector<std::vector<float>>;
@@ -156,8 +156,8 @@ TEST_F(ConvLayerTestbench, StreamImageAndCaptureOutput) {
     std::cout << "DUT Reset." << std::endl;
 
     // Wait for the 3-cycle kernel load to finish
-    std::cout << "Waiting for automatic kernel load (3 cycles)..." << std::endl;
-    clockTick(3);
+    std::cout << "Waiting for automatic kernel load..." << std::endl;
+    clockTick(5);
 
     // 2. Define Input Data (a simple ramp image)
     Image input_image(IMG_SIZE, std::vector<float>(IMG_SIZE));
@@ -194,7 +194,7 @@ TEST_F(ConvLayerTestbench, StreamImageAndCaptureOutput) {
     ASSERT_EQ(output_col_idx, OUT_SIZE) << "Incorrect number of output columns were captured.";
     
     printFeatureMap(0); // Print a sample from the first channel's output
-    printFeatureMap(7); // Print a sample from the last channel's output
+    printFeatureMap(9); // Print a sample from the last channel's output
 }
 
 // --- Main Function ---
