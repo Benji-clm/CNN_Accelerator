@@ -1,10 +1,28 @@
-    module pixel_generator(
+/**
+ * @file pixel_generator_FINAL.sv
+ * @author Benji-clm
+ * @brief Top-level AXI peripheral for image processing pipeline.
+ * @version 4.0
+ * @date 2025-06-18
+ *
+ * @copyright Copyright (c) 2025
+ *
+ * @details
+ * This module orchestrates the entire image processing flow.
+ * 1. Receives a start command via an AXI-Lite interface.
+ * 2. The top_capture module reads an input image from a PS-controlled BRAM,
+ *    performs a convolution, and writes the resulting feature map to a local BRAM (Port A).
+ * 3. The top_tiler module reads the feature map from the local BRAM (Port B),
+ *    formats it for display, and generates pixel coordinates.
+ * 4. The packer module takes the pixel data and streams it out over AXI-Stream.
+ */
+module pixel_generator(
     input           out_stream_aclk,
     input           s_axi_lite_aclk,
     input           axi_resetn,
     input           periph_resetn,
 
-    //Stream output
+    // AXI-Stream Video Output
     output [31:0]   out_stream_tdata,
     output [3:0]    out_stream_tkeep,
     output          out_stream_tlast,
@@ -12,36 +30,31 @@
     output          out_stream_tvalid,
     output [0:0]    out_stream_tuser, 
 
-    //AXI-Lite S
+    // AXI-Lite Control Interface
     input [AXI_LITE_ADDR_WIDTH-1:0]     s_axi_lite_araddr,
     output          s_axi_lite_arready,
     input           s_axi_lite_arvalid,
-
     input [AXI_LITE_ADDR_WIDTH-1:0]     s_axi_lite_awaddr,
     output          s_axi_lite_awready,
     input           s_axi_lite_awvalid,
-
     input           s_axi_lite_bready,
     output [1:0]    s_axi_lite_bresp,
     output          s_axi_lite_bvalid,
-
     output [31:0]   s_axi_lite_rdata,
     input           s_axi_lite_rready,
     output [1:0]    s_axi_lite_rresp,
     output          s_axi_lite_rvalid,
-
     input  [31:0]   s_axi_lite_wdata,
     output          s_axi_lite_wready,
     input           s_axi_lite_wvalid,
 
-    // BRAM SIGNALLLLSSSSS
     input [255:0]			bram_rddata_a,
     output [11:0]			bram_addr_a, // address
     output 					bram_clk_a, // clock
     output [255:0]			bram_wrdata_a, // written DATA into BRAM
     output					bram_en_a, // global enable
     output 					bram_rst_a, // reset	
-    output [3:0]			bram_we_a, // write enable for each byte
+    output [31:0]      		bram_we_a, // write enable for each byte
 
     // BRAM SIGNALLLLSSSSS - port B
     input [255:0]			bram_rddata_b,
@@ -50,7 +63,7 @@
     output [255:0]			bram_wrdata_b, // written DATA into BRAM
     output					bram_en_b, // global enable
     output 					bram_rst_b, // reset	
-    output [3:0]			bram_we_b, // write enable for each byte
+    output [31:0]      	    bram_we_b, // write enable for each byte
 
 
     // BRAM Processing System
@@ -60,7 +73,7 @@
     output [255:0]			bram_wrdata_a_ps, // written DATA into BRAM
     output					bram_en_a_ps, // global enable
     output 					bram_rst_a_ps, // reset	
-    output [3:0]			bram_we_a_ps // write enable for each byte
+    output [31:0]     	    bram_we_a_ps // write enable for each byte
     );
 
     localparam X_SIZE = 640;
@@ -69,18 +82,10 @@
     localparam REG_FILE_AWIDTH = $clog2(REG_FILE_SIZE);
     parameter  AXI_LITE_ADDR_WIDTH = 8;
 
-    localparam AWAIT_WADD_AND_DATA = 3'b000;
-    localparam AWAIT_WDATA = 3'b001;
-    localparam AWAIT_WADD = 3'b010;
-    localparam AWAIT_WRITE = 3'b100;
-    localparam AWAIT_RESP = 3'b101;
-
-    localparam AWAIT_RADD = 2'b00;
-    localparam AWAIT_FETCH = 2'b01;
-    localparam AWAIT_READ = 2'b10;
-
-    localparam AXI_OK = 2'b00;
-    localparam AXI_ERR = 2'b10;
+    // AXI Lite FSM States and Responses
+    localparam AWAIT_WADD_AND_DATA = 3'b000, AWAIT_WDATA = 3'b001, AWAIT_WADD = 3'b010, AWAIT_WRITE = 3'b100, AWAIT_RESP = 3'b101;
+    localparam AWAIT_RADD = 2'b00, AWAIT_FETCH = 2'b01, AWAIT_READ = 2'b10;
+    localparam AXI_OK = 2'b00, AXI_ERR = 2'b10;
 
     reg [31:0]                          regfile [REG_FILE_SIZE-1:0];
     reg [REG_FILE_AWIDTH-1:0]           writeAddr, readAddr;
@@ -88,651 +93,140 @@
     reg [1:0]                           readState = AWAIT_RADD;
     reg [2:0]                           writeState = AWAIT_WADD_AND_DATA;
 
-    //Read from the register file
+    // AXI-Lite Read Logic (Unchanged and Correct)
     always @(posedge s_axi_lite_aclk) begin
-        
         readData <= regfile[readAddr];
-
-        if (!axi_resetn) begin
-        readState <= AWAIT_RADD;
-        end
-
+        if (!axi_resetn) readState <= AWAIT_RADD;
         else case (readState)
-
-            AWAIT_RADD: begin
-                if (s_axi_lite_arvalid) begin
-                    readAddr <= s_axi_lite_araddr[2+:REG_FILE_AWIDTH];
-                    readState <= AWAIT_FETCH;
-                end
-            end
-
-            AWAIT_FETCH: begin
-                readState <= AWAIT_READ;
-            end
-
-            AWAIT_READ: begin
-                if (s_axi_lite_rready) begin
-                    readState <= AWAIT_RADD;
-                end
-            end
-
-            default: begin
-                readState <= AWAIT_RADD;
-            end
-
+            AWAIT_RADD: if (s_axi_lite_arvalid) begin readAddr <= s_axi_lite_araddr[2+:REG_FILE_AWIDTH]; readState <= AWAIT_FETCH; end
+            AWAIT_FETCH: readState <= AWAIT_READ;
+            AWAIT_READ: if (s_axi_lite_rready) readState <= AWAIT_RADD;
+            default: readState <= AWAIT_RADD;
         endcase
     end
-
     assign s_axi_lite_arready = (readState == AWAIT_RADD);
     assign s_axi_lite_rresp = (readAddr < REG_FILE_SIZE) ? AXI_OK : AXI_ERR;
     assign s_axi_lite_rvalid = (readState == AWAIT_READ);
     assign s_axi_lite_rdata = readData;
 
-    //Write to the register file, use a state machine to track address write, data write and response read events
+    // AXI-Lite Write Logic (Unchanged and Correct)
     always @(posedge s_axi_lite_aclk) begin
-
-        if (!axi_resetn) begin
-            writeState <= AWAIT_WADD_AND_DATA;
-        end
-
+        if (!axi_resetn) writeState <= AWAIT_WADD_AND_DATA;
         else case (writeState)
-
-            AWAIT_WADD_AND_DATA: begin  //Idle, awaiting a write address or data
-                case ({s_axi_lite_awvalid, s_axi_lite_wvalid})
-                    2'b10: begin
-                        writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH];
-                        writeState <= AWAIT_WDATA;
-                    end
-                    2'b01: begin
-                        writeData <= s_axi_lite_wdata;
-                        writeState <= AWAIT_WADD;
-                    end
-                    2'b11: begin
-                        writeData <= s_axi_lite_wdata;
-                        writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH];
-                        writeState <= AWAIT_WRITE;
-                    end
-                    default: begin
-                        writeState <= AWAIT_WADD_AND_DATA;
-                    end
-                endcase        
-            end
-
-            AWAIT_WDATA: begin //Received address, waiting for data
-                if (s_axi_lite_wvalid) begin
-                    writeData <= s_axi_lite_wdata;
-                    writeState <= AWAIT_WRITE;
-                end
-            end
-
-            AWAIT_WADD: begin //Received data, waiting for address
-                if (s_axi_lite_awvalid) begin
-                    writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH];
-                    writeState <= AWAIT_WRITE;
-                end
-            end
-
-            AWAIT_WRITE: begin //Perform the write
-                regfile[writeAddr] <= writeData;
-                writeState <= AWAIT_RESP;
-            end
-
-            AWAIT_RESP: begin //Wait to send response
-                if (s_axi_lite_bready) begin
-                    writeState <= AWAIT_WADD_AND_DATA;
-                end
-            end
-
-            default: begin
-                writeState <= AWAIT_WADD_AND_DATA;
-            end
+            AWAIT_WADD_AND_DATA: case ({s_axi_lite_awvalid, s_axi_lite_wvalid})
+                2'b10: begin writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH]; writeState <= AWAIT_WDATA; end
+                2'b01: begin writeData <= s_axi_lite_wdata; writeState <= AWAIT_WADD; end
+                2'b11: begin writeData <= s_axi_lite_wdata; writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH]; writeState <= AWAIT_WRITE; end
+                default: writeState <= AWAIT_WADD_AND_DATA;
+            endcase
+            AWAIT_WDATA: if (s_axi_lite_wvalid) begin writeData <= s_axi_lite_wdata; writeState <= AWAIT_WRITE; end
+            AWAIT_WADD: if (s_axi_lite_awvalid) begin writeAddr <= s_axi_lite_awaddr[2+:REG_FILE_AWIDTH]; writeState <= AWAIT_WRITE; end
+            AWAIT_WRITE: begin regfile[writeAddr] <= writeData; writeState <= AWAIT_RESP; end
+            AWAIT_RESP: if (s_axi_lite_bready) writeState <= AWAIT_WADD_AND_DATA;
+            default: writeState <= AWAIT_WADD_AND_DATA;
         endcase
     end
-
     assign s_axi_lite_awready = (writeState == AWAIT_WADD_AND_DATA || writeState == AWAIT_WADD);
     assign s_axi_lite_wready = (writeState == AWAIT_WADD_AND_DATA || writeState == AWAIT_WDATA);
     assign s_axi_lite_bvalid = (writeState == AWAIT_RESP);
     assign s_axi_lite_bresp = (writeAddr < REG_FILE_SIZE) ? AXI_OK : AXI_ERR;
 
+    //================================================================
+    // Core Processing and Display Logic
+    //================================================================
 
+    // 1. Control Signals
+    logic start_convolution;
+    logic write_done;
+    logic write_enable_a;
+    logic [11:0] bram_addr_a_ps_internal;
 
-    // reg [9:0] x;
-    // reg [8:0] y;
+    // Synchronize the start signal from AXI clock domain to peripheral clock domain
+    logic start_conv_sync1, start_conv_sync2;
+    always_ff @(posedge out_stream_aclk) begin
+        if (!periph_resetn) begin
+            start_conv_sync1 <= 1'b0;
+            start_conv_sync2 <= 1'b0;
+        end else begin
+            start_conv_sync1 <= regfile[0][0]; // Read start bit from AXI register 0
+            start_conv_sync2 <= start_conv_sync1;
+        end
+    end
+    assign start_convolution = start_conv_sync2; // FIXED: Use the synchronized start signal
 
-    // wire first = (x == 0) & (y == 0);
-    // wire lastx = (x == 23);  // Last pixel in 24-pixel row
-    // wire lasty = (y == 23);  // Last row in 24-row column
-    // wire [7:0] frame = regfile[0];
-    // wire ready;
+    // 2. Processing Pipeline: PS BRAM -> Convolution -> Local BRAM
+    top_capture #(
+        .DATA_WIDTH(16), .KERNEL_SIZE(5), .STRIDE(1), .PADDING(1),
+        .CONV_OUTPUT(16), .IMAGE_SIZE(28)
+    ) top_capture_inst (
+        .out_stream_aclk(out_stream_aclk),
+        .periph_resetn(periph_resetn),
+        .start(start_convolution),
 
-    // always @(posedge out_stream_aclk) begin
-    //     if (periph_resetn) begin
-    //         if (ready & valid_int) begin
-    //             if (lastx) begin
-    //                 x <= 9'd0;
-    //                 if (lasty) y <= 9'd0;
-    //                 else y <= y + 9'd1;
-    //             end
-    //             else x <= x + 9'd1;
-    //         end
-    //     end
-    //     else begin
-    //         x <= 0;
-    //         y <= 0;
-    //     end
-    // end
+        // Connections to Local BRAM (Port A - Write)
+        .bram_addr_a(bram_addr_a),
+        .bram_wrdata_a(bram_wrdata_a),
+        .bram_we_a(write_enable_a),      // NOTE: This is an internal signal now
+        .write_done(write_done),         // NOTE: This signal indicates processing is complete
 
+        // Connections to PS BRAM (Read)
+        .bram_rddata_a_ps(bram_rddata_a_ps),
+        .bram_addr_a_ps(bram_addr_a_ps_internal)
+    );
+    assign bram_we_a = {32{write_enable_a}}; // Connect internal WE to 32-bit top-level port
+    assign bram_addr_a_ps = bram_addr_a_ps_internal; // FIXED: Connect internal PS address to top-level port
 
+    // 3. Display Pipeline: Local BRAM -> Tiler -> Packer -> Video Out
+    wire valid_int = 1'b1;
+    logic [7:0] current_gray_pixel;
+    logic ready, first, lastx, lasty;
+    reg [9:0] x;
+    reg [8:0] y;
+    
+    // The Tiler reads the processed image from the Local BRAM and generates pixel coordinates
+    top_tiler #(
+        .X_SIZE(X_SIZE), .Y_SIZE(Y_SIZE), .READ_WIDTH(256), .PIX_BITS(8)
+    ) top_tiler_inst (
+        .out_stream_aclk(out_stream_aclk), .periph_resetn(periph_resetn),
+        .ready(ready), .valid_int(valid_int), .first(first), .pixel(current_gray_pixel),
+        .lastx(lastx), .lasty(lasty), .x(x), .y(y),
+        .bram_rdata(bram_rddata_b), // Read from Local BRAM Port B
+        .bram_addr(bram_addr_b)     // Drive Local BRAM Port B Address
+    );
+
+    // 4. Final Output Formatting
     wire [7:0] r, g, b;
+    assign r = current_gray_pixel;
+    assign g = current_gray_pixel; 
+    assign b = current_gray_pixel;
 
-    // // ________________________ IMAGE TEST ____________________
+    packer pixel_packer(
+        .aclk(out_stream_aclk), .aresetn(periph_resetn),
+        .r(r), .g(g), .b(b), .eol(lastx), .in_stream_ready(ready), .valid(valid_int), .sof(first),
+        .out_stream_tdata(out_stream_tdata), .out_stream_tkeep(out_stream_tkeep),
+        .out_stream_tlast(out_stream_tlast), .out_stream_tready(out_stream_tready),
+        .out_stream_tvalid(out_stream_tvalid), .out_stream_tuser(out_stream_tuser)
+    );
 
-    // wire [15:0] test_column_data [23:0];  // 2D array: 24 rows of 16-bit values
-    // wire test_valid_col;
-    // wire [7:0] current_gray_pixel;
-    // wire pixel_valid;
-
-    // wire [9:0] x_coordinate;
-    // reg [8:0] column_n; 
-
-    // // Generate test grayscale gradient data (white to black) in proper IEEE 754 FP16 format
-    // // FP16 format: sign(1) + exponent(5) + mantissa(10)
-    // genvar i;
-    // generate
-    //     for (i = 0; i < 24; i = i + 1) begin : gen_gradient
-    //         wire [15:0] gradient_value;
-            
-    //         case (i)
-    //             0:  assign gradient_value = 16'h3C00;  // 1.0
-    //             1:  assign gradient_value = 16'h3BDC;  // ~0.956
-    //             2:  assign gradient_value = 16'h3BB8;  // ~0.913
-    //             3:  assign gradient_value = 16'h3B94;  // ~0.870
-    //             4:  assign gradient_value = 16'h3B70;  // ~0.826
-    //             5:  assign gradient_value = 16'h3B4C;  // ~0.783
-    //             6:  assign gradient_value = 16'h3B28;  // ~0.739
-    //             7:  assign gradient_value = 16'h3B04;  // ~0.696
-    //             8:  assign gradient_value = 16'h3AE0;  // ~0.652
-    //             9:  assign gradient_value = 16'h3ABC;  // ~0.609
-    //             10: assign gradient_value = 16'h3A98;  // ~0.565
-    //             11: assign gradient_value = 16'h3A74;  // ~0.522
-    //             12: assign gradient_value = 16'h3A50;  // ~0.478
-    //             13: assign gradient_value = 16'h3A2C;  // ~0.435
-    //             14: assign gradient_value = 16'h3A08;  // ~0.391
-    //             15: assign gradient_value = 16'h39E4;  // ~0.348
-    //             16: assign gradient_value = 16'h39C0;  // ~0.304
-    //             17: assign gradient_value = 16'h399C;  // ~0.261
-    //             18: assign gradient_value = 16'h3978;  // ~0.217
-    //             19: assign gradient_value = 16'h3954;  // ~0.174
-    //             20: assign gradient_value = 16'h3930;  // ~0.130
-    //             21: assign gradient_value = 16'h390C;  // ~0.087
-    //             22: assign gradient_value = 16'h38E8;  // ~0.043
-    //             23: assign gradient_value = 16'h0000;  // 0.0
-    //             default: assign gradient_value = 16'h0000;
-    //         endcase
-            
-    //         assign test_column_data[i] = gradient_value;
-    //     end
-    // endgenerate
-
-    // // Generate test valid signal - pulse every 28 cycles
-    // reg [4:0] test_counter;
-    // always @(posedge out_stream_aclk) begin
-    //     if (!periph_resetn) begin
-    //         test_counter <= 0;
-    //     end else begin
-    //         test_counter <= (test_counter == 27) ? 0 : test_counter + 1;
-    //     end
-    // end
-    // assign test_valid_col = (test_counter == 0);
-
-    // easy_image #(
-    //     .PIX_W(24),
-    //     .PIX_H(24),
-    //     .X_SIZE(X_SIZE)
-    // ) image_output (
-    //     .clk(out_stream_aclk),
-    //     .rst(!periph_resetn),  // Note: rst is active high in easy_image
-    //     .valid_col(test_valid_col),
-    //     .data_col(test_column_data),  // Corrected port name
-    //     .current_gray_pixel(current_gray_pixel),
-    //     .x_coordinate(x_coordinate),  // Corrected port name
-    //     .pixel_valid(pixel_valid)
-    // );
-
-    // // Use the grayscale pixel output
-    // assign r = current_gray_pixel;
-    // assign g = current_gray_pixel;
-    // assign b = current_gray_pixel;
-
-
-
-    // always @(posedge out_stream_aclk) begin
-    //     if (!periph_resetn) begin
-    //         column_n <= 0;
-    //     end else begin
-    //         // When easy_image finishes outputting a column (pixel_valid goes low after being high)
-    //         if (test_valid_col) begin
-    //             // New column data is being loaded, increment column counter
-    //             column_n <= (column_n == 23) ? 0 : column_n + 1;
-    //         end
-    //     end
-    // end
-
-    // // Use column_n as y-coordinate and x_coordinate from easy_image as x-coordinate
-    // always @(posedge out_stream_aclk) begin
-    //     if (!periph_resetn) begin
-    //         x <= 0;
-    //         y <= 0;
-    //     end else begin
-    //         if (pixel_valid) begin
-    //             x <= x_coordinate; 
-    //             y <= column_n;
-    //         end
-    //     end
-    // end
-
-
-    // // _________________________________________________________
-
-
-wire valid_int = 1'b1;
-
-
-// parameter [255:0] TEST_DATA      = 256'hCAFEBEEF_D15EA5ED_DEADBEEF_01234567_89ABCDEF_FEEDFACE_F00DBABE_0BADF00D;
-// parameter [11:0]  TEST_INT_ADDR  = 12'h000;   // location in 256-bit BRAM
-
-
-// typedef enum logic {WAIT, WRITING} capture_state;
-
-// logic valid_col;
-// logic write_done;
-
-// capture_state state_fmap;
-
-// always @(posedge out_stream_aclk or negedge axi_resetn) begin
-//     if (!axi_resetn) begin
-//         state_fmap <= WAIT;
-//         valid_col <= 0;
-//     end else begin
-//         case (state_fmap)
-//             WAIT: begin
-//                 if(regfile[3] == 1'b1) begin
-//                     state_fmap <= WRITING;
-//                 end else begin
-//                     state_fmap <= WAIT;
-//                     valid_col <= 0;
-//                 end
-//             end
-//             WRITING: begin
-//                 if(!write_done) begin 
-//                     state_fmap <= WRITING;
-//                     valid_col <= 1;
-//                 end else begin 
-//                     state_fmap <= WAIT;
-//                     valid_col <= 1;
-//                 end
-//             end
-//         endcase
-//     end
-// end
-
-// assign bram_clk_a = out_stream_aclk;
-// assign bram_en_a = 1'b1;
-// assign bram_rst_a = 1'b0;
-
-// logic [15:0] test_data_col [23:0];
-
-// genvar k;
-// generate
-//     for (k = 0; k < 16; k++) begin : gen_test_data
-//         assign test_data_col[k] = TEST_DATA[k*16 +: 16];
-//     end
-// endgenerate
-
-// fmap_capture_256 #(
-//     .PIX_H(24),
-//     .BASE_ADDR(12'h000)
-// ) capture_256_bits (
-//     .clk(out_stream_aclk),
-//     .rst(!periph_resetn),
-//     .valid_col(valid_col),
-//     .data_col(test_data_col),
+    //================================================================
+    // BRAM Control Signal Tie-offs
+    //================================================================
     
-//     // Connect to BRAM port A for writing
-//     .bram_addr_a(bram_addr_a),
-//     .bram_wrdata_a(bram_wrdata_a),
-//     .bram_we_a(bram_we_a),
-//     .write_done(write_done)
-// );
+    // Local BRAM (Dual Port: A=Write, B=Read)
+    assign bram_clk_a = out_stream_aclk;
+    assign bram_en_a  = 1'b1;
+    assign bram_rst_a = !periph_resetn;
+    assign bram_clk_b = out_stream_aclk;
+    assign bram_en_b  = 1'b1;
+    assign bram_rst_b = !periph_resetn;
+    assign bram_wrdata_b = '0; // Port B is read-only from PL side
+    assign bram_we_b     = '0; // Port B is read-only from PL side
 
-logic start_convolution;
-logic write_done; // Add missing write_done signal declaration
-assign start_convolution = regfile[0];
-
-top_capture #(
-    .DATA_WIDTH(16),
-    .KERNEL_SIZE(5),
-    .STRIDE(1),
-    .PADDING(1),
-    .CONV_OUTPUT(16),
-    .IMAGE_SIZE(28)
-) top_capture_inst (
-    .out_stream_aclk(out_stream_aclk),
-    .periph_resetn(periph_resetn),
-    .start(start_convolution),
-    .write_done(write_done), // Add missing write_done connection
-
-    // BRAM A (capture/write only)
-    .bram_addr_a(bram_addr_a),
-    .bram_wrdata_a(bram_wrdata_a),
-    .bram_we_a(bram_we_a),
-
-    // PS BRAM -> ONLY FOR READING IMAGE
-    .bram_rddata_a_ps(bram_rddata_a_ps),
-    .bram_addr_a_ps(bram_addr_a_ps)
-);
-
-logic [7:0] current_gray_pixel;
-
-reg [9:0] x;
-reg [8:0] y;
-
-wire first;
-wire lastx;
-wire lasty;
-wire ready;
-
-
-assign bram_clk_b = out_stream_aclk;
-assign bram_en_b = 1'b1;
-assign bram_rst_b = 1'b0;
-assign bram_wrdata_b = 256'h0;
-assign bram_we_b = 4'h0;
-
-top_tiler #(
-    .X_SIZE(X_SIZE),
-    .Y_SIZE(Y_SIZE),
-    .READ_WIDTH(256),
-    .PIX_BITS(8)
-) top_tiler_inst (
-    .out_stream_aclk(out_stream_aclk),
-    .periph_resetn(periph_resetn),
-    .ready(ready),
-    .valid_int(valid_int),
-
-    .first(first),
-    .pixel(current_gray_pixel),
-    .lastx(lastx),
-    .lasty(lasty),
-
-    .x(x),
-    .y(y),
+    // PS BRAM (Single Port: A=Read)
+    assign bram_clk_a_ps = out_stream_aclk;
+    assign bram_en_a_ps  = 1'b1;
+    assign bram_rst_a_ps = !periph_resetn;
+    assign bram_wrdata_a_ps = '0; // PS BRAM is read-only from PL side
+    assign bram_we_a_ps     = '0; // PS BRAM is read-only from PL side
     
-    .bram_rdata(bram_rddata_b),
-    .bram_addr(bram_addr_b)
-);
-
-assign r = current_gray_pixel;
-assign g = current_gray_pixel; 
-assign b = current_gray_pixel;
-
-    // parameter [11:0]  TEST_PS_BASE   = 12'h100;   // first 32-bit word address in PS BRAM
-
-    // assign bram_wrdata_a = TEST_DATA;
-    // assign bram_en_a = 1;
-    // assign bram_addr_a = TEST_INT_ADDR;
-    // assign bram_clk_a = out_stream_aclk;
-    // assign bram_rst_a = 0;
-
-    // localparam IDLE   = 1'b0;
-    // localparam ACTIVE = 1'b1;
-
-    // reg state;
-    // reg [3:0] write_enable_reg;
-
-    // always @(posedge out_stream_aclk or negedge axi_resetn) begin
-    // 	if (!axi_resetn) begin
-    // 		state <= IDLE;
-    // 		write_enable_reg <= 4'b1111;
-    //     end else begin
-    // 		case (state)
-    // 			IDLE: begin
-    //                 if(regfile[2] == 1'b1) begin
-    //                     state <= ACTIVE; 
-    //                     write_enable_reg <= 4'b1111;
-    //                 end else state <= ACTIVE;
-    // 			end
-    // 			ACTIVE: begin
-    // 				state <= IDLE;
-    // 				write_enable_reg <= 4'b0000;
-    // 			end
-    // 		endcase
-    // 	end
-    // end
-
-    // assign bram_we_a = write_enable_reg;
-
-    // reg [2:0] state_PS_BRAM;
-    // reg [11:0] PS_address;
-
-    // assign bram_addr_a_ps = PS_address; // to increment at each state
-    // assign bram_clk_a_ps = out_stream_aclk;
-    // assign bram_en_a_ps = 1;
-    // assign bram_rst_a_ps = 0;
-
-    // // State encoding - each representing 32 bits within the PS BRAM
-    // localparam S0 = 4'd0;
-    // localparam S1 = 4'd1;
-    // localparam S2 = 4'd2;
-    // localparam S3 = 4'd3;
-    // localparam S4 = 4'd4;
-    // localparam S5 = 4'd5;
-    // localparam S6 = 4'd6;
-    // localparam S7 = 4'd7;
-    // localparam DONE = 4'd8;
-
-    // reg [31:0] write_PS_value;
-    // reg [3:0]  write_en_PS;
-
-    // always @(posedge out_stream_aclk or negedge axi_resetn) begin
-    //     if (!axi_resetn) begin
-    //         state_PS_BRAM <= S0;
-    //         PS_address <= TEST_PS_BASE;
-    //         write_en_PS <= 4'b0000;
-    //     end else begin
-    //         case (state_PS_BRAM)
-    //             S0: begin
-    //                 if(regfile[2] == 1'b1) begin
-    //                     write_en_PS <= 4'b1111;
-    //                     state_PS_BRAM <= S1;
-    //                     write_PS_value <= bram_rddata_a[31:0];
-    //                     PS_address <= TEST_PS_BASE;
-    //                 end else begin
-    //                     write_en_PS <= 4'b0000;
-    //                     state_PS_BRAM <= S0;
-    //                 end
-    //             end
-    //             S1: begin
-    //                 state_PS_BRAM <= S2;
-    //                 write_PS_value <= bram_rddata_a[63:32];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;  // Enable write for next cycle
-    //             end
-    //             S2: begin
-    //                 state_PS_BRAM <= S3;
-    //                 write_PS_value <= bram_rddata_a[95:64];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             S3: begin
-    //                 state_PS_BRAM <= S4;
-    //                 write_PS_value <= bram_rddata_a[127:96];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             S4: begin
-    //                 state_PS_BRAM <= S5;
-    //                 write_PS_value <= bram_rddata_a[159:128];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             S5: begin
-    //                 state_PS_BRAM <= S6;
-    //                 write_PS_value <= bram_rddata_a[191:160];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             S6: begin
-    //                 state_PS_BRAM <= S7;
-    //                 write_PS_value <= bram_rddata_a[223:192];
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             S7: begin
-    //                 write_PS_value <= bram_rddata_a[255:224];
-    //                 state_PS_BRAM <= DONE;
-    //                 PS_address <= PS_address + 12'd4;
-    //                 write_en_PS <= 4'b1111;
-    //             end
-    //             DONE: begin 
-    //                 state_PS_BRAM <= S0;
-    //                 write_en_PS <= 4'b0000;
-    //             end
-    //             default: begin
-    //                 write_en_PS <= 4'b0000;
-    //                 state_PS_BRAM <= S0;
-    //                 PS_address <= TEST_PS_BASE;
-    //             end
-    //         endcase
-    //     end
-    // end
-
-    // assign bram_we_a_ps = write_en_PS;
-    // assign bram_wrdata_a_ps = write_PS_value;
-
-
-    // conv_5 convolution_n0_5(
-    //     .clk        (out_stream_aclk),
-    //     .rst        (!periph_resetn),
-    //     .data_in0   (bram_rddata_a[15:0]),
-    //     .data_in1   (bram_rddata_a[15:0]),
-    //     .data_in2   (bram_rddata_a[15:0]),
-    //     .data_in3   (bram_rddata_a[15:0]),
-    //     .data_in4   (bram_rddata_a[15:0]),
-    //     .data_out   (data_out),
-    //     .kernel_load(kernel_load),
-    //     .valid_in   (valid_in),
-    //     .valid_out  (valid_out)
-    // );
-
-
-
-    packer pixel_packer(    .aclk(out_stream_aclk),
-                            .aresetn(periph_resetn),
-                            .r(r), .g(g), .b(b),
-                            .eol(lastx), .in_stream_ready(ready), .valid(valid_int), .sof(first),
-                            .out_stream_tdata(out_stream_tdata), .out_stream_tkeep(out_stream_tkeep),
-                            .out_stream_tlast(out_stream_tlast), .out_stream_tready(out_stream_tready),
-                            .out_stream_tvalid(out_stream_tvalid), .out_stream_tuser(out_stream_tuser) );
-
-    
-
-    // B port unused for now
-    // assign bram_addr_b = 12'h0;
-    // assign bram_clk_b = out_stream_aclk;
-    // assign bram_wrdata_b = 256'h0;
-    // assign bram_en_b = 1'b0;
-    // assign bram_rst_b = 1'b0;
-    // assign bram_we_b = 4'h0;
-
-    // assign bram_addr_a = 12'h0;
-    // assign bram_clk_a = out_stream_aclk;
-    // assign bram_wrdata_a = 256'h0;
-    // assign bram_en_a = 1'b0;
-    // assign bram_rst_a = 1'b0;
-    // assign bram_we_a = 4'h0;
-
-    // BRAM PS logic for writing non-zero pixels
-    // parameter [11:0] PS_BASE_ADDR = 12'h000;  // Starting address for pixel data in PS BRAM
-    
-    // reg [11:0] ps_write_addr;
-    // reg [31:0] ps_write_data;
-    // reg [3:0]  ps_write_enable;
-    // reg pixel_write_pending;
-    
-    // // State machine for writing pixels to PS BRAM
-    // typedef enum logic [1:0] {
-    //     PS_IDLE,
-    //     PS_WRITE_PIXEL,
-    //     PS_WRITE_DONE
-    // } ps_write_state_t;
-    
-    // ps_write_state_t ps_state;
-    
-    // always @(posedge out_stream_aclk or negedge axi_resetn) begin
-    //     if (!axi_resetn) begin
-    //         ps_state <= PS_IDLE;
-    //         ps_write_addr <= PS_BASE_ADDR;
-    //         ps_write_data <= 32'h0;
-    //         ps_write_enable <= 4'h0;
-    //         pixel_write_pending <= 1'b0;
-    //     end else begin
-    //         case (ps_state)
-    //             PS_IDLE: begin
-    //                 ps_write_enable <= 4'h0;
-    //                 // Check if we have a valid non-zero pixel to write
-    //                 if (ready && valid_int && (current_gray_pixel != 8'h0)) begin
-    //                     ps_state <= PS_WRITE_PIXEL;
-    //                     pixel_write_pending <= 1'b1;
-    //                     // Pack pixel data with coordinates into 32-bit word
-    //                     // Format: [7:0] pixel_value, [17:8] x_coordinate, [26:18] y_coordinate, [31:27] unused
-    //                     ps_write_data <= {5'h0, y[8:0], x[9:0], current_gray_pixel};
-    //                 end
-    //             end
-                
-    //             PS_WRITE_PIXEL: begin
-    //                 ps_write_enable <= 4'hF;  // Enable all byte lanes
-    //                 ps_state <= PS_WRITE_DONE;
-    //             end
-                
-    //             PS_WRITE_DONE: begin
-    //                 ps_write_enable <= 4'h0;
-    //                 ps_state <= PS_IDLE;
-    //                 pixel_write_pending <= 1'b0;
-    //                 // Increment address for next pixel (only if we don't exceed BRAM size)
-    //                 if (ps_write_addr < 12'hFFC) begin  // Leave room for 32-bit word
-    //                     ps_write_addr <= ps_write_addr + 12'd4;
-    //                 end
-    //             end
-                
-    //             default: begin
-    //                 ps_state <= PS_IDLE;
-    //                 ps_write_enable <= 4'h0;
-    //             end
-    //         endcase
-    //     end
-    // end
-    
-    // assign bram_addr_a_ps = ps_write_addr;
-    // assign bram_clk_a_ps = out_stream_aclk;
-    // assign bram_wrdata_a_ps = ps_write_data;
-    // assign bram_en_a_ps = 1'b1;
-    // assign bram_rst_a_ps = 1'b0;
-    // assign bram_we_a_ps = ps_write_enable;
-
-
-    // assign bram_addr_a_ps = 12'h0;
-assign bram_clk_a_ps = out_stream_aclk;
-assign bram_wrdata_a_ps = 256'h0;  // PS BRAM is read-only, so write data is 0
-assign bram_en_a_ps = 1'b1;
-assign bram_rst_a_ps = 1'b0;
-assign bram_we_a_ps = 4'h0;
-
-// Comment out BRAM A assignments since top_capture now drives them
-assign bram_clk_a = out_stream_aclk;
-assign bram_en_a = 1'b1;
-assign bram_rst_a = 1'b0;
-// bram_addr_a, bram_wrdata_a, bram_we_a are now driven by top_capture
-
-
 endmodule

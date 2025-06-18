@@ -18,7 +18,7 @@ module top_tiler #(
     output logic                 first,
     output logic [PIX_BITS-1:0]  pixel,
     output logic                 lastx,
-    output logic                 lasty,
+    output logic                 lasty, 
 
     output logic [9:0]           x,
     output logic [8:0]           y,
@@ -57,7 +57,7 @@ localparam TILE_1_START_X = 0;
 localparam TILE_1_START_Y = 0;
 localparam TILE_2_START_X = 0;
 localparam TILE_2_START_Y = 100;
-localparam SCALE_FACTOR = 2;
+localparam SCALE_FACTOR = 4;
 
 // REGION DETECTIOOOOOOOOONNNN
 wire in_tile_1_region = (x < TILE_1_START_X + (TILE_1_W * SCALE_FACTOR)) &&
@@ -174,6 +174,7 @@ always_comb begin
         bram_addr = addr_tile_1;
         if (pixel_valid_tile_1) begin
             pixel = pixel_tile_1;
+            // pixel = 8'hFF;
         end
     end
     else if (in_tile_2_region) begin

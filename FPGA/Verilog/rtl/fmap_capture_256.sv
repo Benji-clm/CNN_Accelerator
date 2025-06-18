@@ -6,16 +6,16 @@ module fmap_capture_256 #(
     input  logic            rst,
     input  logic            valid_col,
     input  logic [15:0]     data_col [PIX_H-1:0],
+    input  logic            conv_done,
 
     output logic [11:0]     bram_addr_a,
-    output logic [255:0]    bram_wrdata_a,
-    output logic [3:0]      bram_we_a,
+    output logic [191:0]    bram_wrdata_a, // FIXED: Width changed to 192 bits (24 * 8)
+    output logic            bram_we_a,
     
     output logic            write_done
 );
 
-
-// FP16 to 8-bit grayscale conversion function
+// FP16 to 8-bit grayscale conversion function - UNCOMMENTED AND SAFE
 function automatic [7:0] fp16_to_gray;
     input [15:0] fp16_val;
     
@@ -44,29 +44,26 @@ function automatic [7:0] fp16_to_gray;
             
             if (sign) begin
                 result = 8'h00; // Negative values -> 0
+            end else if (actual_exp >= 8) begin
+                result = 8'hFF; // Large values -> 255
             end else if (actual_exp >= 0) begin
                 // Positive values >= 1.0 -> scale mantissa
-                if (actual_exp >= 8) begin
-                    result = 8'hFF; // Large values -> 255
-                end else begin
-                    result = mantissa[10:3]; // Take upper 8 bits of mantissa
-                end
+                result = mantissa[10:3]; // Take upper 8 bits of mantissa
             end else begin
                 // Values < 1.0 -> scale down
                 if (actual_exp <= -8) begin
                     result = 8'h00;
                 end else begin
-                    result = mantissa[10:3] >> (-actual_exp);
+                    result = mantissa >> (-actual_exp);
                 end
             end
         end
-        
         fp16_to_gray = result;
     end
 endfunction
 
+// Parallel conversion of FP16 to grayscale
 logic [7:0] gray_pixels [PIX_H-1:0];
-// Parallel conversion of entire column
 genvar i;
 generate
     for (i = 0; i < PIX_H; i++) begin : gen_parallel_conversion
@@ -76,72 +73,70 @@ generate
     end
 endgenerate
 
-// put all the gray scale into one signal (Might waste compute when module is not being driven? I added valid col just in case - actually I deleted it now due to timing issues lol)
-// just assign gray concat to the output when needed
-
-logic [255:0] gray_concat;
-
+// Concatenate all grayscale pixels into a 192-bit word
+logic [191:0] gray_concat; // FIXED: Width changed to 192
 always_comb begin
-    gray_concat = '0;
+    // No need to pre-assign to '0' if every bit is assigned
     for (int j = 0; j < PIX_H; j++) begin
         gray_concat[j*8 +: 8] = gray_pixels[j];
     end
 end
 
-
+// Column counter and control logic
 logic [$clog2(PIX_H):0] col_idx;
-logic [$clog2(100):0]   time_out_counter;
+logic [1:0] write_counter;  // 2-bit counter for write cycles
 
-typedef enum logic {VALID, TIME_OUT} st_t;
-st_t st;
-
-
+// Write control logic - SINGLE always_ff block
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-        time_out_counter <= '0;
-        st <= VALID;
-        col_idx      <= '0;
-        bram_we_a    <= 4'b0000;
-        write_done   <= 1'b0;
-    end
-    else begin
+        write_counter <= 2'b00;
+        bram_we_a <= 1'b0;
+        col_idx <= '0;
+        bram_addr_a <= BASE_ADDR;
+        bram_wrdata_a <= '0;
+        write_done <= 1'b0;
+    // NOTE: Consider if you need a conv_done reset condition here too
+    end else begin
+        // Default behavior: keep write_done low unless explicitly set
+        if (write_done) begin
+            write_done <= 1'b0;
+        end
 
-        case(st)
-            VALID: begin
-                bram_we_a  <= 4'b0000;
-                write_done <= 1'b0;
-
+        case (write_counter)
+            2'b00: begin  // IDLE state
                 if (valid_col) begin
-                    if(col_idx < PIX_H-1) begin
-                        st <= VALID;
-                        bram_addr_a   <= BASE_ADDR + col_idx;
-                        bram_wrdata_a <= gray_concat;
-                        bram_we_a     <= 4'b1111;
-                        col_idx <= col_idx + 1;
-                    end else begin
-                        bram_addr_a   <= BASE_ADDR + col_idx;
-                        bram_wrdata_a <= gray_concat;
-                        bram_we_a     <= 4'b1111;
-                        write_done <= 1'b1;
-                        col_idx    <= '0;
-                        time_out_counter <= '0;
-                        st <= TIME_OUT;
-                    end
+                    // Start write sequence
+                    bram_addr_a <= BASE_ADDR + col_idx;
+                    bram_wrdata_a <= gray_concat;
+                    bram_we_a <= 1'b1;
+                    write_counter <= 2'b01;
                 end
             end
-            TIME_OUT: begin
-                bram_we_a  <= 4'b0000;
-                write_done <= 1'b0;
-
-                if (time_out_counter == 99) begin
-                    st <= VALID;
-                    time_out_counter <= '0;
+            
+            2'b01: begin  // CYCLE 1 - Continue write
+                // Data and address are held from previous state
+                bram_we_a <= 1'b1;
+                write_counter <= 2'b10;
+            end
+            
+            2'b10: begin  // CYCLE 2 - Finish write
+                bram_we_a <= 1'b0;
+                write_counter <= 2'b00;
+                
+                if (col_idx >= PIX_H-1) begin
+                    write_done <= 1'b1; // Signal completion
+                    col_idx <= '0;      // Reset for next frame
                 end else begin
-                    time_out_counter <= time_out_counter + 1;
+                    col_idx <= col_idx + 1;
                 end
+            end
+            
+            default: begin
+                write_counter <= 2'b00;
+                bram_we_a <= 1'b0;
             end
         endcase
-        end
+    end
 end
 
 endmodule
