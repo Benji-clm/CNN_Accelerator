@@ -156,8 +156,17 @@ module pixel_generator(
 
     // 2. Processing Pipeline: PS BRAM -> Convolution -> Local BRAM
     top_capture #(
-        .DATA_WIDTH(16), .KERNEL_SIZE(5), .STRIDE(1), .PADDING(1),
-        .CONV_OUTPUT(16), .IMAGE_SIZE(28)
+        .DATA_WIDTH(16),
+        .KERNEL_SIZE_L1(5),
+        .STRIDE(1),
+        .PADDING(1),
+        .CONV_OUTPUT(16),
+        .IMAGE_SIZE(28),
+        .OUTPUT_CHANNELS_L1(4),
+        .OUTPUT_COL_SIZE_L1(24),
+        .KERNEL_SIZE_L2(3),
+        .OUTPUT_CHANNELS_L2(8),
+        .INPUT_COL_SIZE_L2(12)
     ) top_capture_inst (
         .out_stream_aclk(out_stream_aclk),
         .periph_resetn(periph_resetn),

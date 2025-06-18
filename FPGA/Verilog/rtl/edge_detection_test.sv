@@ -13,30 +13,7 @@ module edge_detection_test #(
     input logic [255:0] data_in,
     output logic write_enable,
     output logic read_enable,
-    output logic [DATA_WIDTH-1:0] data_out_0,
-    output logic [DATA_WIDTH-1:0] data_out_1,
-    output logic [DATA_WIDTH-1:0] data_out_2,
-    output logic [DATA_WIDTH-1:0] data_out_3,
-    output logic [DATA_WIDTH-1:0] data_out_4,
-    output logic [DATA_WIDTH-1:0] data_out_5,
-    output logic [DATA_WIDTH-1:0] data_out_6,
-    output logic [DATA_WIDTH-1:0] data_out_7,
-    output logic [DATA_WIDTH-1:0] data_out_8,
-    output logic [DATA_WIDTH-1:0] data_out_9,
-    output logic [DATA_WIDTH-1:0] data_out_10,
-    output logic [DATA_WIDTH-1:0] data_out_11,
-    output logic [DATA_WIDTH-1:0] data_out_12,
-    output logic [DATA_WIDTH-1:0] data_out_13,
-    output logic [DATA_WIDTH-1:0] data_out_14,
-    output logic [DATA_WIDTH-1:0] data_out_15,
-    output logic [DATA_WIDTH-1:0] data_out_16,
-    output logic [DATA_WIDTH-1:0] data_out_17,
-    output logic [DATA_WIDTH-1:0] data_out_18,
-    output logic [DATA_WIDTH-1:0] data_out_19,
-    output logic [DATA_WIDTH-1:0] data_out_20,
-    output logic [DATA_WIDTH-1:0] data_out_21,
-    output logic [DATA_WIDTH-1:0] data_out_22,
-    output logic [DATA_WIDTH-1:0] data_out_23,
+    output logic [DATA_WIDTH-1:0] data_out_x [IMAGE_SIZE-KERNEL_SIZE:0],
     output logic [11:0] addr,
     output logic done,
     output logic valid_out_col,
@@ -71,7 +48,7 @@ module edge_detection_test #(
     logic [$clog2(KERNEL_SIZE):0] kernel_col;
     logic [$clog2(KERNEL_SIZE):0] kernel_row;
     logic [DATA_WIDTH-1:0] data_buffer [0:IMAGE_SIZE-1];
-    logic signed [DATA_WIDTH-1:0] data_out [0:IMAGE_SIZE-KERNEL_SIZE];
+    logic signed [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
 
     //================================================================
     // 3. COMBINATIONAL LOGIC (Single always_comb block)
@@ -190,31 +167,7 @@ module edge_detection_test #(
     // 5. OUTPUT ASSIGNMENTS and INSTANTIATIONS
     //================================================================
     assign write_enable = 1;
-
-    assign data_out_0 = data_out[0];
-    assign data_out_1 = data_out[1];
-    assign data_out_2 = data_out[2];
-    assign data_out_3 = data_out[3];
-    assign data_out_4 = data_out[4];
-    assign data_out_5 = data_out[5];
-    assign data_out_6 = data_out[6];
-    assign data_out_7 = data_out[7];
-    assign data_out_8 = data_out[8];
-    assign data_out_9 = data_out[9];
-    assign data_out_10 = data_out[10];
-    assign data_out_11 = data_out[11];
-    assign data_out_12 = data_out[12];
-    assign data_out_13 = data_out[13];
-    assign data_out_14 = data_out[14];
-    assign data_out_15 = data_out[15];
-    assign data_out_16 = data_out[16];
-    assign data_out_17 = data_out[17];
-    assign data_out_18 = data_out[18];
-    assign data_out_19 = data_out[19];
-    assign data_out_20 = data_out[20];
-    assign data_out_21 = data_out[21];
-    assign data_out_22 = data_out[22];
-    assign data_out_23 = data_out[23];
+    assign data_out_x = data_out;
 
     generate
         for (genvar i = 0; i < IMAGE_SIZE - KERNEL_SIZE + 1; i++) begin : gen_parallel

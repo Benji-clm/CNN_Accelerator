@@ -6,7 +6,6 @@ module fmap_capture_256 #(
     input  logic            rst,
     input  logic            valid_col,
     input  logic [15:0]     data_col [PIX_H-1:0],
-    input  logic            conv_done,
 
     output logic [11:0]     bram_addr_a,
     output logic [191:0]    bram_wrdata_a, // FIXED: Width changed to 192 bits (24 * 8)

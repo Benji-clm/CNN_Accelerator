@@ -19,7 +19,9 @@ module conv_layer_1 #(
 
     // --- Data Outputs ---
     output logic [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0][(INPUT_COL_SIZE - KERNEL_SIZE + 1) / 2 - 1:0],
-    output logic valid_out
+    output logic valid_out,
+
+    output logic column_valid_out
 );
 
     localparam [DATA_WIDTH-1:0] KERNELS[0:NUM_CHANNELS-1][0:INPUT_CHANNEL_NUMBER-1][0:KERNEL_SIZE*KERNEL_SIZE-1] =
@@ -184,6 +186,10 @@ module conv_layer_1 #(
                 .output_column(channel_output),
                 .valid_out(valid)
             );
+            if (ch_idx == 0) begin
+                assign column_valid_out = valid; // Only the first channel's valid signal is used for conv_valid_2
+            end
+
             assign fm_columns[ch] = channel_output;
             ReLU_column #(
                 .COLUMN_SIZE(INPUT_COL_SIZE - KERNEL_SIZE + 1)
