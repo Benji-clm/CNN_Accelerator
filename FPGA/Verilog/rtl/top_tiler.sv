@@ -1,8 +1,8 @@
-//================================================= 
+//=================================================
 //
 // Purpose of this module: Keeps track of x and y position over monitor, and outputs value by reading from the BRAM independently of other things
 //      Partitions the monitor -> will say "ok x and y are at these position, turn on this one tile and uses its output data"
-// 
+//
 //=================================================
 module top_tiler #(
     parameter int   X_SIZE = 640,
@@ -18,7 +18,7 @@ module top_tiler #(
     output logic                 first,
     output logic [PIX_BITS-1:0]  pixel,
     output logic                 lastx,
-    output logic                 lasty, 
+    output logic                 lasty,
 
     output logic [9:0]           x,
     output logic [8:0]           y,
@@ -57,6 +57,8 @@ localparam TILE_1_START_X = 0;
 localparam TILE_1_START_Y = 0;
 localparam TILE_2_START_X = 0;
 localparam TILE_2_START_Y = 100;
+localparam TILE_3_START_X = 200;
+localparam TILE_3_START_Y = 200;
 localparam SCALE_FACTOR = 4;
 
 // REGION DETECTIOOOOOOOOONNNN
@@ -65,6 +67,9 @@ wire in_tile_1_region = (x < TILE_1_START_X + (TILE_1_W * SCALE_FACTOR)) &&
 
 wire in_tile_2_region = (x >= TILE_2_START_X) && (x < TILE_2_START_X + (TILE_2_W * SCALE_FACTOR)) &&
                         (y >= TILE_2_START_Y) && (y < TILE_2_START_Y + (TILE_2_W * SCALE_FACTOR));
+
+wire in_tile_3_region = (x >= TILE_3_START_X) && (x < TILE_3_START_X + (TILE_3_W * SCALE_FACTOR)) &&
+                        (y >= TILE_3_START_Y) && (y < TILE_3_START_Y + (TILE_3_W * SCALE_FACTOR));
 
 
 logic [11:0] addr_tile_1;
@@ -118,9 +123,34 @@ tile_reader #(
     .bram_rdata(bram_rdata)
 );
 
+logic [11:0] addr_tile_3;
+logic [PIX_BITS-1:0] pixel_tile_3;
+logic pixel_valid_tile_3;
+logic advance_tile_3;
+localparam TILE_3_W = 10;
+
+tile_reader #(
+    .BASE_ADDR(12'h020),
+    .TILE_W(TILE_3_W),
+    .TILE_H(TILE_3_W),
+    .WORD_BITS(READ_WIDTH),
+    .PIX_BITS(PIX_BITS)
+) tile_reader_inst_3 (
+    .clk(out_stream_aclk),
+    .rst_n(periph_resetn),
+    .advance_pixel(advance_tile_3),
+
+    .pixel(pixel_tile_3),
+    .pixel_valid(pixel_valid_tile_3),
+
+    .bram_addr(addr_tile_3),
+    .bram_rdata(bram_rdata)
+);
+
 // Scaling control signals
 logic [1:0] tile_1_scale_x, tile_1_scale_y;
 logic [1:0] tile_2_scale_x, tile_2_scale_y;
+logic [1:0] tile_3_scale_x, tile_3_scale_y;
 
 // Scaling logic
 always_ff @(posedge out_stream_aclk) begin
@@ -129,13 +159,13 @@ always_ff @(posedge out_stream_aclk) begin
         tile_1_scale_y <= 0;
         tile_2_scale_x <= 0;
         tile_2_scale_y <= 0;
+        tile_3_scale_x <= 0;
+        tile_3_scale_y <= 0;
     end else if (ready & valid_int) begin
         // Handle tile 1 scaling
         if (in_tile_1_region) begin
-            // Get relative position within tile region
             logic [9:0] rel_x = x - TILE_1_START_X;
             logic [8:0] rel_y = y - TILE_1_START_Y;
-            
             tile_1_scale_x <= rel_x % SCALE_FACTOR;
             tile_1_scale_y <= rel_y % SCALE_FACTOR;
         end else begin
@@ -145,15 +175,24 @@ always_ff @(posedge out_stream_aclk) begin
         
         // Handle tile 2 scaling
         if (in_tile_2_region) begin
-            // Get relative position within tile region
             logic [9:0] rel_x = x - TILE_2_START_X;
             logic [8:0] rel_y = y - TILE_2_START_Y;
-            
             tile_2_scale_x <= rel_x % SCALE_FACTOR;
             tile_2_scale_y <= rel_y % SCALE_FACTOR;
         end else begin
             tile_2_scale_x <= 0;
             tile_2_scale_y <= 0;
+        end
+
+        // Handle tile 3 scaling
+        if (in_tile_3_region) begin
+            logic [9:0] rel_x = x - TILE_3_START_X;
+            logic [8:0] rel_y = y - TILE_3_START_Y;
+            tile_3_scale_x <= rel_x % SCALE_FACTOR;
+            tile_3_scale_y <= rel_y % SCALE_FACTOR;
+        end else begin
+            tile_3_scale_x <= 0;
+            tile_3_scale_y <= 0;
         end
     end
 end
@@ -165,7 +204,10 @@ assign advance_tile_1 = (tile_1_scale_x == SCALE_FACTOR-1) && (tile_1_scale_y ==
 assign advance_tile_2 = (tile_2_scale_x == SCALE_FACTOR-1) && (tile_2_scale_y == SCALE_FACTOR-1) && 
                         (ready & valid_int) && in_tile_2_region;
 
-always_comb begin 
+assign advance_tile_3 = (tile_3_scale_x == SCALE_FACTOR-1) && (tile_3_scale_y == SCALE_FACTOR-1) &&
+                        (ready & valid_int) && in_tile_3_region;
+
+always_comb begin
     // Default values
     pixel = 8'h00;  // Black by default (nice separation between feature maps)
     bram_addr = 12'h000;
@@ -174,13 +216,18 @@ always_comb begin
         bram_addr = addr_tile_1;
         if (pixel_valid_tile_1) begin
             pixel = pixel_tile_1;
-            // pixel = 8'hFF;
         end
     end
     else if (in_tile_2_region) begin
         bram_addr = addr_tile_2;
         if (pixel_valid_tile_2) begin
             pixel = pixel_tile_2;
+        end
+    end
+    else if (in_tile_3_region) begin
+        bram_addr = addr_tile_3;
+        if (pixel_valid_tile_3) begin
+            pixel = pixel_tile_3;
         end
     end
 end

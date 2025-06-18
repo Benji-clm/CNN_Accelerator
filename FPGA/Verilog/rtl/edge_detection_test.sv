@@ -48,7 +48,7 @@ module edge_detection_test #(
     logic [$clog2(KERNEL_SIZE):0] kernel_col;
     logic [$clog2(KERNEL_SIZE):0] kernel_row;
     logic [DATA_WIDTH-1:0] data_buffer [0:IMAGE_SIZE-1];
-    logic signed [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
+    logic [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
 
     //================================================================
     // 3. COMBINATIONAL LOGIC (Single always_comb block)

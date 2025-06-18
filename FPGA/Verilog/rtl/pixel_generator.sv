@@ -141,6 +141,10 @@ module pixel_generator(
     logic write_enable_a;
     logic [11:0] bram_addr_a_ps_internal;
 
+    logic unused_channel_debug_out;
+    logic [15:0] max;
+    logic [$clog2(10)-1:0] index;
+
     // Synchronize the start signal from AXI clock domain to peripheral clock domain
     logic start_conv_sync1, start_conv_sync2;
     always_ff @(posedge out_stream_aclk) begin
@@ -154,7 +158,7 @@ module pixel_generator(
     end
     assign start_convolution = start_conv_sync2; // FIXED: Use the synchronized start signal
 
-    // 2. Processing Pipeline: PS BRAM -> Convolution -> Local BRAM
+    (* DONT_TOUCH = "true" *)
     top_capture #(
         .DATA_WIDTH(16),
         .KERNEL_SIZE_L1(5),
@@ -180,7 +184,12 @@ module pixel_generator(
 
         // Connections to PS BRAM (Read)
         .bram_rddata_a_ps(bram_rddata_a_ps),
-        .bram_addr_a_ps(bram_addr_a_ps_internal)
+        .bram_addr_a_ps(bram_addr_a_ps_internal),
+
+        .unused_channel_debug_out(unused_channel_debug_out),
+
+        .max(max),
+        .index(index)
     );
     assign bram_we_a = {32{write_enable_a}}; // Connect internal WE to 32-bit top-level port
     assign bram_addr_a_ps = bram_addr_a_ps_internal; // FIXED: Connect internal PS address to top-level port

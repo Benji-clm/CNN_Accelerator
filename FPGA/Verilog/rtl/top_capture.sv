@@ -1,3 +1,18 @@
+/**
+ * @file top_capture.sv
+ * @brief Top-level module for CNN processing and BRAM capture.
+ * @author Benji-clm
+ * @date 2025-06-18
+ *
+ * @details
+ * This module orchestrates the full two-layer CNN pipeline and uses a state
+ * machine to arbitrate BRAM access for capturing feature maps from each layer.
+ *
+ * Revision 2: Corrected a critical synthesis bug. Previously, only the valid
+ * signal from the first of four parallel pooling layers was used. This was
+ * fixed by adding a proper AND-reduction on all four valid signals, ensuring
+ * the logic for all channels is preserved during synthesis.
+ */
 module top_capture #(
     parameter DATA_WIDTH = 16,
     parameter KERNEL_SIZE_L1 = 5,
@@ -13,7 +28,13 @@ module top_capture #(
     // layer twoooooo
     parameter KERNEL_SIZE_L2 = 3,
     parameter OUTPUT_CHANNELS_L2 = 8,
-    parameter INPUT_COL_SIZE_L2 = 12
+    parameter INPUT_COL_SIZE_L2 = 12,
+
+
+    localparam KERNEL_SIZE_L3 = 4,
+    localparam INPUT_COL_SIZE_L3 = 5,
+    localparam NUM_CHANNELS_L3 = 10,
+    localparam INPUT_CHANNEL_NUMBER_L3 = 8
 
 )(
     input logic             out_stream_aclk,
@@ -28,7 +49,11 @@ module top_capture #(
 
     // BRAM I/O for the *PS* BRAM where the input image is read from
     input [255:0]			bram_rddata_a_ps,
-    output [11:0]			bram_addr_a_ps
+    output [11:0]			bram_addr_a_ps,
+
+    output logic            unused_channel_debug_out,
+    output logic [DATA_WIDTH-1:0] max,
+    output logic [$clog2(10)-1:0] index
 );
 
 //================================================================
@@ -112,7 +137,13 @@ assign write_done = (current_state == FINISHED);
 assign bram_addr_a_ps = conv_bram_addr_internal;
 
 conv_top_test #(
-    .KERNEL_SIZE(KERNEL_SIZE_L1), .OUTPUT_CHANNELS(OUTPUT_CHANNELS_L1), .OUTPUT_COL_SIZE(OUTPUT_COL_SIZE_L1)
+    .DATA_WIDTH(DATA_WIDTH),
+    .IMAGE_SIZE(IMAGE_SIZE),
+    .KERNEL_SIZE(KERNEL_SIZE_L1),
+    .STRIDE(STRIDE),
+    .PADDING(PADDING),
+    .OUTPUT_CHANNELS(OUTPUT_CHANNELS_L1),
+    .OUTPUT_COL_SIZE(OUTPUT_COL_SIZE_L1)
 ) conv_top_inst (
     .clk(out_stream_aclk), .rst(!periph_resetn), .start(start),
     .done(conv_done_from_conv_1), .valid_out(valid_out_from_conv_1),
@@ -139,16 +170,44 @@ generate
         );
     end
 endgenerate
-assign pooling_valid_out_L1 = pooling_valid_out_wires_L1[0];
+
+// **FIXED**: The entire pooling stage is only valid when ALL parallel channels are valid.
+// This ensures that the logic for all four channels is preserved during synthesis.
+always_comb begin
+    logic v_out_reduced = 1'b1;
+    for (int i = 0; i < OUTPUT_CHANNELS_L1; i++) begin
+        v_out_reduced = v_out_reduced & pooling_valid_out_wires_L1[i];
+    end
+    pooling_valid_out_L1 = v_out_reduced;
+end
+
+logic [DATA_WIDTH-1:0] output_columns_L2[NUM_CHANNELS-1:0][(INPUT_COL_SIZE_L2 - KERNEL_SIZE_L2 + 1) / 2 - 1:0];
 
 conv_layer_1 #(
+    .DATA_WIDTH(DATA_WIDTH),
     .KERNEL_SIZE(KERNEL_SIZE_L2), .INPUT_COL_SIZE(INPUT_COL_SIZE_L2),
     .NUM_CHANNELS(OUTPUT_CHANNELS_L2), .INPUT_CHANNEL_NUMBER(OUTPUT_CHANNELS_L1)
 ) conv_layer_1_inst (
     .clk(out_stream_aclk), .rst(!periph_resetn), .valid_in(pooling_valid_out_L1),
     .input_columns(pooling_data_out_L1), .column_valid_out(valid_out_from_conv_2),
-    .fm_columns(conv_data_out_l2)
+    .fm_columns(conv_data_out_l2),
+    .output_columns(output_columns_L2)
     // Other outputs like pooling and valid_out are not used in this context
+);
+
+conv_layer_2 #(
+    .DATA_WIDTH(DATA_WIDTH),
+    .KERNEL_SIZE(KERNEL_SIZE_L3),
+    .INPUT_COL_SIZE(INPUT_COL_SIZE_L3),
+    .NUM_CHANNELS(NUM_CHANNELS_L3),
+    .INPUT_CHANNEL_NUMBER(INPUT_CHANNEL_NUMBER_L3)
+) conv_layer_2_inst (
+    .clk(out_stream_aclk),
+    .rst(!periph_resetn),
+    .valid_in(valid_out_from_conv_2),
+    .input_columns(output_columns_L2),
+    .max(max),
+    .index(index)
 );
 
 //================================================================
@@ -179,5 +238,30 @@ fmap_capture_256 #(
     .bram_addr_a(bram_addr_a_l2), .bram_wrdata_a(bram_wrdata_a_l2),
     .bram_we_a(bram_we_a_l2), .write_done(capture_is_done_2)
 );
+
+localparam L2_COL_SIZE = INPUT_COL_SIZE_L2 - KERNEL_SIZE_L2;
+
+always_comb begin
+    logic [DATA_WIDTH-1:0] reduced_l1_val = '0;
+    logic [DATA_WIDTH-1:0] reduced_l2_val = '0;
+
+    // Reduce unused channels from Layer 1 (channels 1 to 3)
+    for (int chan = 1; chan < OUTPUT_CHANNELS_L1; chan++) begin
+        for (int col = 0; col < OUTPUT_COL_SIZE_L1; col++) begin
+            reduced_l1_val ^= conv_data_out_l1[chan][col];
+        end
+    end
+
+    // Reduce unused channels from Layer 2 (channels 1 to 7)
+    for (int chan = 1; chan < OUTPUT_CHANNELS_L2; chan++) begin
+        for (int col = 0; col <= L2_COL_SIZE; col++) begin
+            reduced_l2_val ^= conv_data_out_l2[chan][col];
+        end
+    end
+
+    // Combine the reductions and assign to the dummy output
+    unused_channel_debug_out = reduced_l1_val ^ reduced_l2_val;
+end
+
 
 endmodule
