@@ -93,9 +93,47 @@ module pixel_generator(
     reg [1:0]                           readState = AWAIT_RADD;
     reg [2:0]                           writeState = AWAIT_WADD_AND_DATA;
 
+    //================================================================
+    // ADDED: CDC logic for max and index signals
+    //================================================================
+    logic [15:0] max_pclk;
+    logic [$clog2(10)-1:0] index_pclk;
+    logic [15:0] max_sync1, max_sync2;
+    logic [$clog2(10)-1:0] index_sync1, index_sync2;
+
+    // First stage registers in peripheral clock domain to avoid metastability
+    always_ff @(posedge out_stream_aclk) begin
+        if (!periph_resetn) begin
+            max_pclk <= '0;
+            index_pclk <= '0;
+        end else begin
+            max_pclk <= max;
+            index_pclk <= index;
+        end
+    end
+
+    // Two-flop synchronizer to cross from out_stream_aclk to s_axi_lite_aclk
+    always_ff @(posedge s_axi_lite_aclk) begin
+        if (!axi_resetn) begin
+            max_sync1 <= '0;
+            max_sync2 <= '0;
+            index_sync1 <= '0;
+            index_sync2 <= '0;
+        end else begin
+            max_sync1 <= max_pclk;
+            max_sync2 <= max_sync1;
+            index_sync1 <= index_pclk;
+            index_sync2 <= index_sync1;
+        end
+    end
+
     // AXI-Lite Read Logic (Unchanged and Correct)
     always @(posedge s_axi_lite_aclk) begin
-        readData <= regfile[readAddr];
+        case (readAddr)
+            3'd2:    readData <= {16'b0, max_sync2};   // If address is 2, provide max
+            3'd3:    readData <= {28'b0, index_sync2}; // If address is 3, provide index
+            default: readData <= regfile[readAddr];    // For all other addresses, provide the regfile value
+        endcase
         if (!axi_resetn) readState <= AWAIT_RADD;
         else case (readState)
             AWAIT_RADD: if (s_axi_lite_arvalid) begin readAddr <= s_axi_lite_araddr[2+:REG_FILE_AWIDTH]; readState <= AWAIT_FETCH; end
@@ -145,6 +183,8 @@ module pixel_generator(
     logic [15:0] max;
     logic [$clog2(10)-1:0] index;
 
+    logic final_valid_out;
+
     // Synchronize the start signal from AXI clock domain to peripheral clock domain
     logic start_conv_sync1, start_conv_sync2;
     always_ff @(posedge out_stream_aclk) begin
@@ -158,7 +198,7 @@ module pixel_generator(
     end
     assign start_convolution = start_conv_sync2; // FIXED: Use the synchronized start signal
 
-    (* DONT_TOUCH = "true" *)
+    // (* DONT_TOUCH = "true" *)
     top_capture #(
         .DATA_WIDTH(16),
         .KERNEL_SIZE_L1(5),
@@ -189,8 +229,11 @@ module pixel_generator(
         .unused_channel_debug_out(unused_channel_debug_out),
 
         .max(max),
-        .index(index)
+        .index(index),
+
+        .final_valid_out(final_valid_out)
     );
+
     assign bram_we_a = {32{write_enable_a}}; // Connect internal WE to 32-bit top-level port
     assign bram_addr_a_ps = bram_addr_a_ps_internal; // FIXED: Connect internal PS address to top-level port
 

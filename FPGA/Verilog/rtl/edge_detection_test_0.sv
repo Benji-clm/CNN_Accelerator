@@ -1,4 +1,4 @@
-module edge_detection_test #(
+module edge_detection_test_0 #(
     parameter DATA_WIDTH = 16,    // Half-precision float width
     parameter KERNEL_SIZE = 5,
     parameter STRIDE = 1,

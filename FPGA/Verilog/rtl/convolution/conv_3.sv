@@ -1,19 +1,18 @@
 module conv_3 #(
-    // Parameters for configuring the convolution operation
-    parameter DATA_WIDTH = 16, // Data width for each pixel/weight (e.g., 16 for FP16)
-    parameter KERNEL_SIZE = 3 // Size of the convolution kernel (3 for a 3x3 kernel)
+    parameter DATA_WIDTH = 16,
+    parameter KERNEL_SIZE = 3
 )(
     input logic clk,
     input logic rst,
 
-    // Input data streams (representing one column of the image)
+    // Input data streams
     input logic [DATA_WIDTH-1:0] data_in [KERNEL_SIZE - 1: 0],
 
     // Control signals
-    input logic kernel_load, // High to load kernel weights, low to process image data
-    input logic valid_in,    // High when input data is valid
-    output logic valid_out,   // FIXED: Port direction is now output
-    // Input signal to control when the output is latched
+    input logic kernel_load,
+    input logic valid_in,
+    // **FIXED**: This MUST be an input, controlled by the parent module.
+    input logic valid_out,
 
     // Output data
     output logic [DATA_WIDTH-1:0] data_out
@@ -24,17 +23,13 @@ module conv_3 #(
     logic [DATA_WIDTH-1:0] image_buffer  [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
     logic [DATA_WIDTH-1:0] conv_reg;
     logic [DATA_WIDTH-1:0] result_reg;
-    logic                  valid_s1, valid_s2; // FIXED: Internal pipeline for valid signal
 
-    // Combinational assignment of the output register to the port
+    // The final output is the value from the last pipeline stage.
     assign data_out = conv_reg;
-    // FIXED: Assign the final stage of the valid pipeline to the output port
-    assign valid_out = valid_s2;
 
+    // This single process handles all register updates.
     always_ff @(posedge clk or posedge rst) begin
-        // Reset has the highest priority and is asynchronous
         if (rst) begin
-            // Reset kernel and image buffers to all zeros
             for (int i = 0; i < KERNEL_SIZE; i++) begin
                 for (int j = 0; j < KERNEL_SIZE; j++) begin
                     kernel_matrix[i][j] <= '0;
@@ -43,51 +38,42 @@ module conv_3 #(
             end
             conv_reg   <= '0;
             result_reg <= '0;
-            // FIXED: Reset the valid pipeline registers
-            valid_s1 <= 1'b0;
-            valid_s2 <= 1'b0;
         end
-        // All clocked logic is in the else block
         else begin
-            // Input data shifting logic
+            // --- Data Shifting ---
+            // This logic is only active when the parent provides valid input data.
             if (valid_in) begin
                 if (kernel_load) begin
-                    // Load kernel data: shift rows up and load new row at the bottom
                     for (int i = 0; i < KERNEL_SIZE - 1; i++) begin
                         kernel_matrix[i] <= kernel_matrix[i+1];
                     end
-                    for (int j = 0; j < KERNEL_SIZE; j++) begin
-                        kernel_matrix[KERNEL_SIZE-1][j] <= data_in[j];
-                    end
+                    kernel_matrix[KERNEL_SIZE-1] <= data_in;
                 end else begin
-                    // Load image data: shift rows up and load new row at the bottom
                     for (int i = 0; i < KERNEL_SIZE - 1; i++) begin
                         image_buffer[i] <= image_buffer[i+1];
                     end
-                    for (int j = 0; j < KERNEL_SIZE; j++) begin
-                        image_buffer[KERNEL_SIZE-1][j] <= data_in[j];
-                    end
+                    image_buffer[KERNEL_SIZE-1] <= data_in;
                 end
             end
 
-            // FIXED: A 2-stage valid pipeline to match the 2-stage data pipeline (result_reg -> conv_reg)
-            valid_s1 <= valid_in && !kernel_load;
-            valid_s2 <= valid_s1;
+            // --- Data Pipeline ---
 
-            // Latch the first stage result when its corresponding valid is high
-            if (valid_s1) begin
+            // Stage 1: Latch the result of the combinational MAC unit.
+            // This happens on the cycle that valid image data is being processed.
+            if (valid_in && !kernel_load) begin
                 result_reg <= final_sum;
             end
 
-            // Latch the final output when its corresponding valid is high
-            if (valid_s2) begin
+            // Stage 2: Latch the final output.
+            // This is controlled by the parent module's external timing signal.
+            if (valid_out) begin
                 conv_reg <= result_reg;
             end
         end
     end
 
-    // --- Multiply and Accumulate (MAC) Logic ---
-    // This part is purely combinational and remains unchanged.
+    // --- Combinational Multiply and Accumulate (MAC) Logic ---
+    // This logic is unchanged.
 
     logic [DATA_WIDTH-1:0] mul_results[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
     logic [DATA_WIDTH-1:0] add_stage1[4:0];
@@ -95,10 +81,9 @@ module conv_3 #(
     logic [DATA_WIDTH-1:0] add_stage3[1:0];
     logic [DATA_WIDTH-1:0] final_sum;
 
-    genvar k, l;
     generate
-        for (k = 0; k < KERNEL_SIZE; k++) begin : gen_row
-            for (l = 0; l < KERNEL_SIZE; l++) begin : gen_col
+        for (genvar k = 0; k < KERNEL_SIZE; k++) begin : gen_row
+            for (genvar l = 0; l < KERNEL_SIZE; l++) begin : gen_col
                 mulfp16 mul_inst (
                     .a_in(image_buffer[k][l]),
                     .b_in(kernel_matrix[k][l]),
@@ -107,7 +92,6 @@ module conv_3 #(
             end
         end
 
-        // Combinational Adder Tree
         addfp16 add_s1_0(.a(mul_results[0][0]), .b(mul_results[0][1]), .sum(add_stage1[0]));
         addfp16 add_s1_1(.a(mul_results[0][2]), .b(mul_results[1][0]), .sum(add_stage1[1]));
         addfp16 add_s1_2(.a(mul_results[1][1]), .b(mul_results[1][2]), .sum(add_stage1[2]));
@@ -120,7 +104,7 @@ module conv_3 #(
 
         addfp16 add_s3_0(.a(add_stage2[0]), .b(add_stage2[1]), .sum(add_stage3[0]));
         assign add_stage3[1] = add_stage2[2];
-        
+
         addfp16 add_final(.a(add_stage3[0]), .b(add_stage3[1]), .sum(final_sum));
     endgenerate
 

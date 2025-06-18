@@ -1,4 +1,4 @@
-module edge_detection_test #(
+module edge_detection_test_1 #(
     parameter DATA_WIDTH = 16,    // Half-precision float width
     parameter KERNEL_SIZE = 5,
     parameter STRIDE = 1,
@@ -25,7 +25,7 @@ module edge_detection_test #(
     // 1. PARAMETERS and KERNEL DEFINITION
     //================================================================
     localparam KERNEL_FLAT_SIZE = KERNEL_SIZE * KERNEL_SIZE;
-    localparam logic signed [DATA_WIDTH-1:0]
+    localparam logic [DATA_WIDTH-1:0]
         kernel_matrix [0:KERNEL_FLAT_SIZE-1] = '{
             16'h31E5, 16'h3542, 16'h36B2, 16'h31F9, 16'hAE40, 
             16'hB71D, 16'hB5E7, 16'hB4E5, 16'hACCC, 16'h2B28, 

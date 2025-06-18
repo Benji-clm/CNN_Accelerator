@@ -1,4 +1,4 @@
-module edge_detection_test #(
+module edge_detection_test_2 #(
     parameter DATA_WIDTH = 16,    // Half-precision float width
     parameter KERNEL_SIZE = 5,
     parameter STRIDE = 1,
@@ -49,7 +49,7 @@ module edge_detection_test #(
     logic [$clog2(KERNEL_SIZE):0] kernel_col;
     logic [$clog2(KERNEL_SIZE):0] kernel_row;
     logic [DATA_WIDTH-1:0] data_buffer [0:IMAGE_SIZE-1];
-    logic signed [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
+    logic [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
 
     //================================================================
     // 3. COMBINATIONAL LOGIC (Single always_comb block)

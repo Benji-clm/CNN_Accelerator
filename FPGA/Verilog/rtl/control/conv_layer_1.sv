@@ -169,7 +169,6 @@ module conv_layer_1 #(
         end
     endgenerate
 
-    // **FIXED**: Replaced illegal '&' operator with a synthesizable 'for' loop.
     always_comb begin
         logic v_out_reduced = 1'b1;
         logic c_valid_reduced = 1'b1;
