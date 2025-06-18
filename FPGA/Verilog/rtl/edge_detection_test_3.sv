@@ -27,11 +27,11 @@ module edge_detection_test #(
     localparam KERNEL_FLAT_SIZE = KERNEL_SIZE * KERNEL_SIZE;
     localparam logic signed [DATA_WIDTH-1:0]
         kernel_matrix [0:KERNEL_FLAT_SIZE-1] = '{
-            -2, -1,  0,  1,  2,
-            -3, -2,  0,  2,  3,
-            -4, -3,  0,  3,  4,
-            -3, -2,  0,  2,  3,
-            -2, -1,  0,  1,  2
+            16'hA973, 16'h33C5, 16'h34F5, 16'h3621, 16'h3675, 
+            16'hAC4C, 16'h36B9, 16'h2FC5, 16'hB3D7, 16'hB0A2, 
+            16'h355A, 16'h312D, 16'hB00E, 16'hB01A, 16'hB466, 
+            16'h3287, 16'hB4F3, 16'hB6F8, 16'hB53D, 16'hB122, 
+            16'hB6B1, 16'hA5DD, 16'h3096, 16'h328D, 16'hAA92
         };
 
     //================================================================
@@ -48,7 +48,7 @@ module edge_detection_test #(
     logic [$clog2(KERNEL_SIZE):0] kernel_col;
     logic [$clog2(KERNEL_SIZE):0] kernel_row;
     logic [DATA_WIDTH-1:0] data_buffer [0:IMAGE_SIZE-1];
-    logic [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
+    logic signed [DATA_WIDTH-1:0] data_out [IMAGE_SIZE-KERNEL_SIZE:0];
 
     //================================================================
     // 3. COMBINATIONAL LOGIC (Single always_comb block)

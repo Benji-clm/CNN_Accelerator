@@ -41,13 +41,13 @@ module top_capture #(
     input logic             periph_resetn,
     input logic             start,
 
-    // BRAM I/O for the *local* BRAM where results are written
+    // BRAM I/O for the local BRAM where results are written
     output logic [11:0]     bram_addr_a,
     output logic [255:0]    bram_wrdata_a,
     output logic            bram_we_a,
     output logic            write_done, // This is the main status output
 
-    // BRAM I/O for the *PS* BRAM where the input image is read from
+    // BRAM I/O for the PS BRAM where the input image is read from
     input [255:0]			bram_rddata_a_ps,
     output [11:0]			bram_addr_a_ps,
 

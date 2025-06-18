@@ -39,11 +39,7 @@ logic done_wires[OUTPUT_CHANNELS-1:0];
 logic valid_wires[OUTPUT_CHANNELS-1:0];
 
 
-// --- Channel Instantiation ---
-
-// Instance 0: The "Master"
-// This instance drives the BRAM address and other primary control signals.
-edge_detection_test #(
+edge_detection_test_0 #(
     .DATA_WIDTH(DATA_WIDTH),
     .KERNEL_SIZE(KERNEL_SIZE),
     .STRIDE(STRIDE),
@@ -66,9 +62,7 @@ edge_detection_test #(
     .out_col_num()
 );
 
-// Instance 1: "Slave"
-// Receives the same data but does not drive the address bus.
-edge_detection_test #(
+edge_detection_test_1 #(
     .DATA_WIDTH(DATA_WIDTH),
     .KERNEL_SIZE(KERNEL_SIZE),
     .STRIDE(STRIDE),
@@ -91,8 +85,7 @@ edge_detection_test #(
     .out_col_num()
 );
 
-// Instance 2: "Slave"
-edge_detection_test #(
+edge_detection_test_2 #(
     .DATA_WIDTH(DATA_WIDTH),
     .KERNEL_SIZE(KERNEL_SIZE),
     .STRIDE(STRIDE),
@@ -115,8 +108,7 @@ edge_detection_test #(
     .out_col_num()
 );
 
-// Instance 3: "Slave"
-edge_detection_test #(
+edge_detection_test_3 #(
     .DATA_WIDTH(DATA_WIDTH),
     .KERNEL_SIZE(KERNEL_SIZE),
     .STRIDE(STRIDE),

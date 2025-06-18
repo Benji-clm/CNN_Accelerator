@@ -16,7 +16,7 @@ def parse_input_file(input_filename):
         i = 0
         
         # Parse kernel values
-        while i < len(lines) and not lines[i].startswith("Layer: conv3.bias"):
+        while i < len(lines) and not lines[i].startswith("Layer: conv1.bias"):
             line = lines[i]
             if line.startswith("Filter"):
                 filter_num = int(line.split()[1][:-1]) - 1
@@ -28,8 +28,8 @@ def parse_input_file(input_filename):
                     kernels[filter_num].append([])
                     i += 1
                     
-                    # Read the next 4 lines for the 4x4 kernel
-                    for _ in range(4):
+                    # Read the next 5 lines for the 4x4 kernel
+                    for _ in range(5):
                         kernel_line = lines[i]
                         values = [float(v) for v in kernel_line.split()]
                         kernels[filter_num][channel_num].extend(values)
@@ -53,7 +53,7 @@ def parse_input_file(input_filename):
 def generate_sv_code(kernels, biases):
     """Generate SystemVerilog code from kernels and biases."""
     # Generate KERNELS array
-    kernel_str = "localparam [15:0] KERNELS[0:9][0:7][0:15] = '{\n"
+    kernel_str = "localparam [15:0] KERNELS[0:3][0:24] = '{\n"
     for filter_idx, filter in enumerate(kernels):
         kernel_str += f"    // Filter {filter_idx}\n    '{{\n"
         for channel_idx, channel in enumerate(filter):
@@ -70,7 +70,7 @@ def generate_sv_code(kernels, biases):
     
     # Generate BIASES array
     hex_biases = [float_to_fp16_hex(bias) for bias in biases]
-    bias_str = "localparam [15:0] BIASES[0:9] = '{" + ", ".join(hex_biases) + "};"
+    bias_str = "localparam [15:0] BIASES[0:3] = '{" + ", ".join(hex_biases) + "};"
     
     return kernel_str, bias_str
 
@@ -82,19 +82,18 @@ def write_output_file(output_filename, kernel_str, bias_str):
         out_file.write(bias_str + "\n")
 
 def main():
-    input_filename = "conv_layer_2.txt"
-    output_filename = "output.sv"
+    input_filename = "conv_layer_1.txt"
+    output_filename = "output_1.sv"
     
     # Parse the input file
     kernels, biases = parse_input_file(input_filename)
     
     # Verify the structure
-    assert len(kernels) == 10, "Expected 10 filters"
+    assert len(kernels) == 4, "Expected 10 filters"
     for f in kernels:
-        assert len(f) == 8, "Each filter should have 8 channels"
         for c in f:
-            assert len(c) == 16, "Each channel should have 16 values"
-    assert len(biases) == 10, "Expected 10 biases"
+            assert len(c) == 25, "Each channel should have 16 values"
+    assert len(biases) == 4, "Expected 10 biases"
     
     # Generate SystemVerilog code
     kernel_str, bias_str = generate_sv_code(kernels, biases)
