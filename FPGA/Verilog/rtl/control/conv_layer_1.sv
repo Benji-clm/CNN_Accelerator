@@ -14,6 +14,8 @@ module conv_layer_1 #(
     // --- Data Inputs ---
     input logic [DATA_WIDTH-1:0] input_columns [INPUT_CHANNEL_NUMBER-1:0][INPUT_COL_SIZE-1:0],
 
+    // Feature map
+    output logic [DATA_WIDTH-1:0] fm_columns [NUM_CHANNELS-1:0][INPUT_COL_SIZE - KERNEL_SIZE :0],
 
     // --- Data Outputs ---
     output logic [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0][(INPUT_COL_SIZE - KERNEL_SIZE + 1) / 2 - 1:0],
@@ -182,6 +184,7 @@ module conv_layer_1 #(
                 .output_column(channel_output),
                 .valid_out(valid)
             );
+            assign fm_columns[ch] = channel_output;
             ReLU_column #(
                 .COLUMN_SIZE(INPUT_COL_SIZE - KERNEL_SIZE + 1)
             ) ReLU (
