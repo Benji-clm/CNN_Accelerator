@@ -1,9 +1,10 @@
-#include "../base_testbench.h"
-#include <vector>
-#include <array>
-#include <cmath>
-#include <iomanip>
-#include <Imath/half.h> // From OpenEXR/Imath library for FP16 conversion
+#include "../base_testbench.h" // Assuming a common base testbench header
+#include <cmath>                 // For math functions like round
+#include <vector>                // For 2D image representation
+#include <array>                 // For column data
+#include <iomanip>               // For formatted output
+#include <cstdint>               // For fixed-width integers like int16_t
+#include <algorithm>             // For std::max/min
 
 // --- Forward Declarations ---
 class Vdut;
@@ -14,25 +15,26 @@ Vdut *top;
 VerilatedVcdC *tfp;
 unsigned int ticks = 0;
 
-using Imath::half;
-
 // --- Helper Functions ---
 
-/**
- * @brief Converts a standard float to a 16-bit half-precision float's bit representation.
- */
-uint16_t float_to_fp16(float value) {
-    half h(value);
-    return h.bits();
+// --- Q2.14 Fixed-Point Conversion Helpers ---
+// The Q2.14 format in a 16-bit signed integer means:
+// - 1 bit for the sign
+// - 1 bit for the integer part
+// - 14 bits for the fractional part
+constexpr int Q_FRACTIONAL_BITS = 14;
+constexpr float Q_SCALE_FACTOR = 1 << Q_FRACTIONAL_BITS; // 16384.0f
+
+// Helper: Convert float to Q2.14 format (stored as int16_t)
+int16_t float_to_q2_14(float value) {
+    float scaled_value = value * Q_SCALE_FACTOR;
+    int32_t rounded_value = static_cast<int32_t>(round(scaled_value));
+    return static_cast<int16_t>(std::max(-32768, std::min(32767, rounded_value)));
 }
 
-/**
- * @brief Converts a 16-bit half-precision float's bit representation back to a standard float.
- */
-float fp16_to_float(uint16_t value) {
-    half h;
-    h.setBits(value);
-    return (float)h;
+// Helper: Convert Q2.14 bit pattern (int16_t) to float for debugging/display
+float q2_14_to_float(int16_t value) {
+    return static_cast<float>(value) / Q_SCALE_FACTOR;
 }
 
 // --- Base Testbench Class ---
@@ -45,16 +47,23 @@ protected:
     static constexpr int KERNEL_SIZE = 3;
     static constexpr int NUM_CHANNELS = 8;
     static constexpr int NUM_INPUT_CHANNELS = 4;
-    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1)/2; // Should be 10
+    static constexpr int OUT_SIZE = (IMG_SIZE - KERNEL_SIZE + 1)/2;
 
-    // Type definitions for clarity
-    using Image = std::vector<std::vector<float>>;
-    using OutputFeatureMaps = std::vector<Image>;
+    static constexpr float BIAS_FLOAT = -0.137897;
 
-    // Buffer to store the output from all 8 channels of the DUT
+    // Type definitions for clarity using fixed-point representation
+    using ImageFloat = std::vector<std::vector<float>>;
+    using ImageQ14 = std::vector<std::vector<int16_t>>;
+    using KernelQ14 = std::array<std::array<int16_t, KERNEL_SIZE>, KERNEL_SIZE>;
+    using ImageColumnQ14 = std::array<int16_t, IMG_SIZE>;
+    using OutputFeatureMaps = std::vector<ImageQ14>;
+
     OutputFeatureMaps dut_output_maps;
+    OutputFeatureMaps dut_feature_maps;
+    // Buffer to store the output from all 8 channels of the DUT
     int output_col_idx = 0;
-    
+    int FM_col_idx = 0;
+
     void initializeInputs() override {
         top->valid_in = 0;
         
@@ -74,6 +83,9 @@ protected:
             top->eval();
             if (top->valid_out) {
                 captureAllOutputs();
+            }
+            if (top->column_valid_out){
+                captureAllFM();
             }
             tfp->dump(ticks);
 
@@ -104,13 +116,21 @@ protected:
 
     // --- Output Capture ---
     void resetOutputBuffer() {
-        dut_output_maps.assign(NUM_CHANNELS, Image(OUT_SIZE, std::vector<float>(OUT_SIZE, 0.0f)));
+        dut_output_maps.assign(NUM_CHANNELS, ImageQ14(OUT_SIZE, std::vector<int16_t>(OUT_SIZE, 0)));
+        dut_feature_maps.assign(NUM_CHANNELS, ImageQ14(OUT_SIZE * 2, std::vector<int16_t>(OUT_SIZE * 2, 0)));
         output_col_idx = 0;
+        FM_col_idx = 0;
     }
 
     void captureOutput(int ch, int col_index) {
         for (int i = 0; i < OUT_SIZE; i++) {
-            dut_output_maps[ch][i][col_index] = fp16_to_float(top->output_columns[ch][i]);
+            dut_output_maps[ch][i][col_index] = top->output_columns[ch][i];
+        }
+    }
+
+    void captureFM(int ch, int col_index){
+        for (int i = 0; i < OUT_SIZE * 2; i++) {
+            dut_feature_maps[ch][i][col_index] = top->fm_columns[ch][i];
         }
     }
 
@@ -124,17 +144,34 @@ protected:
         }
     }
 
+    void captureAllFM() {
+        if (FM_col_idx < OUT_SIZE * 2) {
+            // Iterate over each of the 8 output channels
+            for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+                captureFM(ch, FM_col_idx);
+            }
+            FM_col_idx++;
+        }
+    }
+
     // --- Utility to print a feature map ---
     void printFeatureMap(int channel_idx) {
         std::cout << std::fixed << std::setprecision(4);
         std::cout << "\n--- Sample of Captured Output for Channel " << channel_idx << " ---" << std::endl;
         for(int y = 0; y < OUT_SIZE; ++y) {
             for (int x = 0; x < OUT_SIZE; ++x) {
-                std::cout << std::setw(10) << dut_output_maps[channel_idx][y][x] << " ";
+                std::cout << std::setw(10) << q2_14_to_float(dut_output_maps[channel_idx][y][x]) << " ";
             }
             std::cout << std::endl;
         }
         std::cout << "--------------------------------------" << std::endl;
+        std::cout << "\n--- Sample of Captured FM for Channel " << channel_idx << " ---" << std::endl;
+        for(int y = 0; y < OUT_SIZE * 2; ++y) {
+            for (int x = 0; x < OUT_SIZE * 2; ++x) {
+                std::cout << std::setw(10) << q2_14_to_float(dut_feature_maps[channel_idx][y][x]) << " ";
+            }
+            std::cout << std::endl;
+        }
     }
 };
 
@@ -152,7 +189,7 @@ TEST_F(ConvLayerTestbench, StreamImageAndCaptureOutput) {
     clockTick(3);
 
     // 2. Define Input Data (a simple ramp image)
-    Image input_image(IMG_SIZE, std::vector<float>(IMG_SIZE));
+    ImageFloat input_image(IMG_SIZE, std::vector<float>(IMG_SIZE));
     for(int i = 0; i < IMG_SIZE; i++) {
         for (int j = 0; j < IMG_SIZE; j++) {
             input_image[i][j] = static_cast<float>(i * 0.1f - j * 0.05f);
@@ -165,7 +202,7 @@ TEST_F(ConvLayerTestbench, StreamImageAndCaptureOutput) {
     for (int col = 0; col < IMG_SIZE; ++col) {
         std::array<uint16_t, IMG_SIZE> col_data;
         for(int row = 0; row < IMG_SIZE; ++row) {
-            col_data[row] = float_to_fp16(input_image[row][col]);
+            col_data[row] = static_cast<uint16_t>(float_to_q2_14(input_image[row][col]));
         }
 
         top->valid_in = 1;

@@ -3,26 +3,26 @@ module cv3_channel #(
     parameter KERNEL_SIZE             = 3,
     parameter INPUT_COL_SIZE          = 12,
     parameter INPUT_CHANNEL_NUMBER    = 4,
-    parameter [DATA_WIDTH-1:0] BIAS   = 16'hb06a,
+    parameter signed [DATA_WIDTH-1:0] BIAS = 16'hF72D,
     localparam PARALLEL_UNITS         = INPUT_COL_SIZE - KERNEL_SIZE + 1
 )(
     input logic clk,
     input logic rst,
     input logic kernel_load,
     input logic valid_in,
-    input logic [DATA_WIDTH-1:0] input_columns [INPUT_CHANNEL_NUMBER-1:0][INPUT_COL_SIZE-1:0],
-    input logic [DATA_WIDTH-1:0] kernel_inputs [INPUT_CHANNEL_NUMBER-1:0][KERNEL_SIZE-1:0],
-    output logic [DATA_WIDTH-1:0] output_column [PARALLEL_UNITS-1:0],
+    input logic signed [DATA_WIDTH-1:0] input_columns [INPUT_CHANNEL_NUMBER-1:0][INPUT_COL_SIZE-1:0],
+    input logic signed [DATA_WIDTH-1:0] kernel_inputs [INPUT_CHANNEL_NUMBER-1:0][KERNEL_SIZE-1:0],
+    output logic signed [DATA_WIDTH-1:0] output_column [PARALLEL_UNITS-1:0],
     output logic valid_out
 );
 
     // Internal Signals
-    logic [DATA_WIDTH-1:0] filter_outputs [INPUT_CHANNEL_NUMBER-1:0][PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] filter_outputs [INPUT_CHANNEL_NUMBER-1:0][PARALLEL_UNITS-1:0];
     logic                  filter_valids  [INPUT_CHANNEL_NUMBER-1:0];
-    logic [DATA_WIDTH-1:0] sum_s1_0_reg [PARALLEL_UNITS-1:0];
-    logic [DATA_WIDTH-1:0] sum_s1_1_reg [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s1_0_reg [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s1_1_reg [PARALLEL_UNITS-1:0];
     logic                  valid_s1_reg;
-    logic [DATA_WIDTH-1:0] sum_s2_reg [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s2_reg [PARALLEL_UNITS-1:0];
     logic                  valid_s2_reg;
 
     // Filter Instantiation
@@ -38,8 +38,8 @@ module cv3_channel #(
     endgenerate
 
     // Pipelined Adder Tree
-    logic [DATA_WIDTH-1:0] sum_s1_0_next [PARALLEL_UNITS-1:0];
-    logic [DATA_WIDTH-1:0] sum_s1_1_next [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s1_0_next [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s1_1_next [PARALLEL_UNITS-1:0];
     logic                  combined_filter_valid;
 
     always_comb begin
@@ -51,8 +51,8 @@ module cv3_channel #(
 
     generate
         for (genvar unit = 0; unit < PARALLEL_UNITS; unit++) begin : gen_adder1_comb
-            addfp16 add_s1_0 (.a(filter_outputs[0][unit]), .b(filter_outputs[1][unit]), .sum(sum_s1_0_next[unit]));
-            addfp16 add_s1_1 (.a(filter_outputs[2][unit]), .b(filter_outputs[3][unit]), .sum(sum_s1_1_next[unit]));
+            assign sum_s1_0_next[unit] = filter_outputs[0][unit] + filter_outputs[1][unit];
+            assign sum_s1_1_next[unit] = filter_outputs[2][unit] + filter_outputs[3][unit];
         end
     endgenerate
 
@@ -73,10 +73,10 @@ module cv3_channel #(
         end
     end
 
-    logic [DATA_WIDTH-1:0] sum_s2_next [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s2_next [PARALLEL_UNITS-1:0];
     generate
         for (genvar unit = 0; unit < PARALLEL_UNITS; unit++) begin : gen_adder2_comb
-            addfp16 add_s2_0 (.a(sum_s1_0_reg[unit]), .b(sum_s1_1_reg[unit]), .sum(sum_s2_next[unit]));
+            assign sum_s2_next[unit] = sum_s1_0_reg[unit] + sum_s1_1_reg[unit];
         end
     endgenerate
 
@@ -95,10 +95,10 @@ module cv3_channel #(
         end
     end
 
-    logic [DATA_WIDTH-1:0] sum_s3_next [PARALLEL_UNITS-1:0];
+    logic signed [DATA_WIDTH-1:0] sum_s3_next [PARALLEL_UNITS-1:0];
     generate
         for (genvar unit = 0; unit < PARALLEL_UNITS; unit++) begin : gen_adder3_comb
-            addfp16 add_bias (.a(sum_s2_reg[unit]), .b(BIAS), .sum(sum_s3_next[unit]));
+            assign sum_s3_next[unit] = sum_s2_reg[unit] + BIAS;
         end
     endgenerate
 

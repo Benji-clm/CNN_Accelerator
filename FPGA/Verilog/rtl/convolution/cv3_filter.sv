@@ -1,5 +1,5 @@
 module cv3_filter #(
-    parameter DATA_WIDTH      = 16, // Data width for each element (FP16)
+    parameter DATA_WIDTH      = 16, // Data width for Q2.14 format (1 sign + 1 integer + 14 fractional)
     parameter KERNEL_SIZE     = 3,  // The size of the convolution kernel (e.g., 3 for 3x3)
     parameter INPUT_COL_SIZE  = 12, // Height of the input data column
     localparam PARALLEL_UNITS = INPUT_COL_SIZE - KERNEL_SIZE + 1
@@ -8,15 +8,15 @@ module cv3_filter #(
     input logic rst,
 
     // --- Control Signals ---
-    input logic kernel_load,    // Assert to load kernel weights, de-assert for image processing
-    input logic valid_in,       // Assert when input_column and kernel_column are valid
+    input logic kernel_load,   // Assert to load kernel weights, de-assert for image processing
+    input logic valid_in,      // Assert when input_column and kernel_column are valid
 
-    // --- Data Inputs ---
-    input logic [DATA_WIDTH-1:0] input_column [INPUT_COL_SIZE-1:0],
-    input logic [DATA_WIDTH-1:0] kernel_column [KERNEL_SIZE-1:0],
+    // --- Data Inputs (Q2.14 Signed Fixed-Point) ---
+    input logic signed [DATA_WIDTH-1:0] input_column [INPUT_COL_SIZE-1:0],
+    input logic signed [DATA_WIDTH-1:0] kernel_column [KERNEL_SIZE-1:0],
 
-    // --- Data Outputs ---
-    output logic [DATA_WIDTH-1:0] output_column [PARALLEL_UNITS-1:0],
+    // --- Data Outputs (Q2.14 Signed Fixed-Point) ---
+    output logic signed [DATA_WIDTH-1:0] output_column [PARALLEL_UNITS-1:0],
     output logic valid_out
 );
 
@@ -78,11 +78,11 @@ module cv3_filter #(
     generate
         for (i = 0; i < PARALLEL_UNITS; i++) begin : gen_conv_units
             
-            wire [DATA_WIDTH-1:0] conv_data_slice [KERNEL_SIZE-1:0];
+            logic signed [DATA_WIDTH-1:0] conv_data_slice [KERNEL_SIZE-1:0];
             assign conv_data_slice[0] = input_column[i];
             assign conv_data_slice[1] = input_column[i+1];
             assign conv_data_slice[2] = input_column[i+2];
-            wire [DATA_WIDTH-1:0] muxed_data_in [KERNEL_SIZE-1:0];
+            logic signed [DATA_WIDTH-1:0] muxed_data_in [KERNEL_SIZE-1:0];
         
             genvar j;
             for (j = 0; j < KERNEL_SIZE; j = j + 1) begin : gen_mux

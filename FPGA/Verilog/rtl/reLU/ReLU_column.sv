@@ -1,8 +1,8 @@
 module ReLU_column #(
     parameter COLUMN_SIZE = 24
 ) (
-    input logic  [15:0] data_in [COLUMN_SIZE],
-    output logic [15:0] data_out [COLUMN_SIZE]
+    input logic  signed [15:0] data_in [COLUMN_SIZE],
+    output logic signed [15:0] data_out [COLUMN_SIZE]
 );
 
     genvar i;

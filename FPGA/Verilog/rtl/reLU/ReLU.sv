@@ -1,6 +1,6 @@
 module ReLU (
-    input logic [15:0] data_in,
-    output logic [15:0] data_out
+    input logic signed [15:0] data_in,
+    output logic signed [15:0] data_out
 );
     always_comb begin
         // Apply ReLU activation function

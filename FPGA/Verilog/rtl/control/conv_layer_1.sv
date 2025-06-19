@@ -12,78 +12,84 @@ module conv_layer_1 #(
     input logic valid_in,
 
     // --- Data Inputs ---
-    input logic [DATA_WIDTH-1:0] input_columns [INPUT_CHANNEL_NUMBER-1:0][INPUT_COL_SIZE-1:0],
+    input logic signed [DATA_WIDTH-1:0] input_columns [INPUT_CHANNEL_NUMBER-1:0][INPUT_COL_SIZE-1:0],
 
     // Feature map
-    output logic [DATA_WIDTH-1:0] fm_columns [NUM_CHANNELS-1:0][INPUT_COL_SIZE - KERNEL_SIZE :0],
-
+    output logic signed [DATA_WIDTH-1:0] fm_columns [NUM_CHANNELS-1:0][INPUT_COL_SIZE - KERNEL_SIZE :0],
     // --- Data Outputs ---
-    output logic [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0][(INPUT_COL_SIZE - KERNEL_SIZE + 1) / 2 - 1:0],
+    output logic signed [DATA_WIDTH-1:0] output_columns[NUM_CHANNELS-1:0][(INPUT_COL_SIZE - KERNEL_SIZE + 1) / 2 - 1:0],
     output logic valid_out,
     output logic column_valid_out
 );
 
     // --- Hardcoded Kernels and Biases ---
-    localparam [DATA_WIDTH-1:0] KERNELS[0:NUM_CHANNELS-1][0:INPUT_CHANNEL_NUMBER-1][0:KERNEL_SIZE*KERNEL_SIZE-1] =
+    localparam logic signed [DATA_WIDTH-1:0] KERNELS [NUM_CHANNELS-1:0] [INPUT_CHANNEL_NUMBER-1:0] [KERNEL_SIZE * KERNEL_SIZE-1:0] =
     '{
-        // --- Channel 0 Kernels (was Filter 1) ---
-        '{
-            '{16'h31d7, 16'h2e22, 16'haf91, 16'hb6ce, 16'h33fc, 16'ha532, 16'h3619, 16'hb477, 16'haa1c}, // Filter 0 (was Input Channel 1)
-            '{16'h2b04, 16'h30e8, 16'hb1ef, 16'hb5a7, 16'hb5ed, 16'h345c, 16'hb730, 16'h3171, 16'h3506}, // Filter 1 (was Input Channel 2)
-            '{16'h338e, 16'h357d, 16'ha010, 16'h283b, 16'hacce, 16'hb1f4, 16'hbc7c, 16'hb8fe, 16'hb5b1}, // Filter 2 (was Input Channel 3)
-            '{16'hb4e0, 16'h3102, 16'h346e, 16'h30c9, 16'h36fe, 16'haaad, 16'hb281, 16'hb563, 16'h32d8}  // Filter 3 (was Input Channel 4)
+        // --- Filter 0 Kernels ---
+        '{ // Output Channel 0
+            '{16'h0BAE, 16'h0622, 16'hF86F, 16'hE4C6, 16'h0FF9, 16'hFEB4, 16'h1863, 16'hEE25, 16'hFCF2}, // Input Chan 0
+            '{16'h0382, 16'h09D0, 16'hF421, 16'hE964, 16'hE84D, 16'h116F, 16'hE33F, 16'h0AE3, 16'h1417}, // Input Chan 1
+            '{16'h0F1B, 16'h15F6, 16'hFF7E, 16'h021E, 16'hFB32, 16'hF419, 16'hB83A, 16'hD810, 16'hE93B}, // Input Chan 2
+            '{16'hEC81, 16'h0A04, 16'h11B7, 16'h0992, 16'h1BF8, 16'hFCA9, 16'hF2FF, 16'hEA74, 16'h0DB1}  // Input Chan 3
         },
-        // --- Channel 1 Kernels (was Filter 2) ---
-        '{
-            '{16'hada6, 16'h2dd4, 16'hb04e, 16'h365f, 16'h320b, 16'h3347, 16'h2f62, 16'h2dab, 16'hae67},
-            '{16'hb8cc, 16'h363e, 16'hb16d, 16'hb8dd, 16'haa0f, 16'h35c0, 16'ha9df, 16'ha93f, 16'h32a5},
-            '{16'h2446, 16'hb172, 16'h3471, 16'hb431, 16'hb462, 16'h34fd, 16'hb58d, 16'hb696, 16'ha8f1},
-            '{16'h3330, 16'hb283, 16'hb0b3, 16'h2bae, 16'haf92, 16'h9ea2, 16'h2b44, 16'hab76, 16'h33ed}
+
+        // --- Filter 1 Kernels ---
+        '{ // Output Channel 1
+            '{16'hFA5A, 16'h05D4, 16'hF765, 16'h197C, 16'h0C16, 16'h0E8E, 16'h0762, 16'h05AB, 16'hF999}, // Input Chan 0
+            '{16'hD99F, 16'h18F9, 16'hF527, 16'hD915, 16'hFCF9, 16'h1700, 16'hFD10, 16'hFD60, 16'h0D4A}, // Input Chan 1
+            '{16'h0111, 16'hF51C, 16'h11C6, 16'hEF3D, 16'hEE76, 16'h13F6, 16'hE9CA, 16'hE5A7, 16'hFD87}, // Input Chan 2
+            '{16'h0E60, 16'hF2FA, 16'hF69A, 16'h03D7, 16'hF86E, 16'hFF96, 16'h03A2, 16'hFC45, 16'h0FDA}  // Input Chan 3
         },
-        // --- Channel 2 Kernels (was Filter 3) ---
-        '{
-            '{16'h2a1a, 16'hb20d, 16'h3207, 16'h317d, 16'h2be4, 16'hb918, 16'h3685, 16'h33b6, 16'hb77d},
-            '{16'hb158, 16'hb71b, 16'hb173, 16'hb042, 16'hb5bc, 16'hac0e, 16'hb4e8, 16'hb3d0, 16'h2924},
-            '{16'ha9dc, 16'hb1bd, 16'h33c9, 16'h3477, 16'h254a, 16'ha370, 16'h30b5, 16'h3359, 16'h30c9},
-            '{16'h3228, 16'hb820, 16'hb38a, 16'h317d, 16'hb378, 16'hbb25, 16'h383f, 16'hb13e, 16'hbac1}
+
+        // --- Filter 2 Kernels ---
+        '{ // Output Channel 2
+            '{16'h030D, 16'hF3E7, 16'h0C0E, 16'h0AF9, 16'h03F2, 16'hD73C, 16'h1A13, 16'h0F6C, 16'hE20A}, // Input Chan 0
+            '{16'hF550, 16'hE396, 16'hF51A, 16'hF77D, 16'hE90F, 16'hFBF2, 16'hEC5F, 16'hF05F, 16'h0292}, // Input Chan 1
+            '{16'hFD12, 16'hF485, 16'h0F92, 16'h11DD, 16'h0153, 16'hFF12, 16'h096A, 16'h0EB1, 16'h0991}, // Input Chan 2
+            '{16'h0C4F, 16'hDF03, 16'hF0EB, 16'h0AF9, 16'hF110, 16'hC6D4, 16'h21FA, 16'hF584, 16'hC9FB}  // Input Chan 3
         },
-        // --- Channel 3 Kernels (was Filter 4) ---
-        '{
-            '{16'h2613, 16'had60, 16'h3045, 16'h2ff0, 16'h2f53, 16'h3120, 16'hb51d, 16'hb2d8, 16'h34e9},
-            '{16'haef4, 16'h31bb, 16'h24f2, 16'h31d0, 16'h3111, 16'ha044, 16'h9634, 16'h34e6, 16'hb2e3},
-            '{16'hb7c6, 16'hb793, 16'hbbc4, 16'hafe9, 16'hadf1, 16'hb889, 16'h3613, 16'h39ec, 16'h34e8},
-            '{16'h3451, 16'hb43d, 16'hb4d0, 16'h34aa, 16'h274e, 16'hb641, 16'haa65, 16'hb8f7, 16'h36a9}
+
+        // --- Filter 3 Kernels ---
+        '{ // Output Channel 3
+            '{16'h0185, 16'hFAA0, 16'h088A, 16'h07F0, 16'h0753, 16'h0A3F, 16'hEB8C, 16'hF251, 16'h13A3}, // Input Chan 0
+            '{16'hF90C, 16'h0B76, 16'h013C, 16'h0BA1, 16'h0A22, 16'hFF77, 16'hFFE7, 16'h1399, 16'hF23A}, // Input Chan 1
+            '{16'hE0E9, 16'hE1B5, 16'hC1DC, 16'hF817, 16'hFA0F, 16'hDBB8, 16'h184D, 16'h2F5E, 16'h13A1}, // Input Chan 2
+            '{16'h1143, 16'hEF0B, 16'hECC2, 16'h12A9, 16'h01D4, 16'hE6FB, 16'hFCCE, 16'hD848, 16'h1AA2}  // Input Chan 3
         },
-        // --- Channel 4 Kernels (was Filter 5) ---
-        '{
-            '{16'h2f11, 16'h30d0, 16'hadab, 16'hb865, 16'hb827, 16'hb540, 16'hb1e5, 16'hb575, 16'hb4b3},
-            '{16'hb596, 16'hb2c9, 16'hb5d8, 16'h3338, 16'h3140, 16'hb575, 16'h32de, 16'h31bc, 16'h30fa},
-            '{16'had56, 16'hae76, 16'h326b, 16'hb638, 16'hb406, 16'hb381, 16'h3413, 16'h30f4, 16'ha83f},
-            '{16'hb5b4, 16'h2730, 16'h3739, 16'haf85, 16'h341e, 16'h3789, 16'hb8a2, 16'hb317, 16'h2b4a}
+
+        // --- Filter 4 Kernels ---
+        '{ // Output Channel 4
+            '{16'h0711, 16'h09A0, 16'hFA55, 16'hDCDA, 16'hDEC5, 16'hEB01, 16'hF437, 16'hEA2D, 16'hED32}, // Input Chan 0
+            '{16'hE9A8, 16'hF26D, 16'hE8A1, 16'h0E71, 16'h0A81, 16'hEA2D, 16'h0DBC, 16'h0B77, 16'h09F5}, // Input Chan 1
+            '{16'hFAAA, 16'hF98A, 16'h0CD6, 16'hE721, 16'hEFE9, 16'hF0FE, 16'h104D, 16'h09E7, 16'hFDE1}, // Input Chan 2
+            '{16'hE92E, 16'h01CC, 16'h1CE4, 16'hF87B, 16'h1076, 16'h1E26, 16'hDAF3, 16'hF1D3, 16'h03A5}  // Input Chan 3
         },
-        // --- Channel 5 Kernels (was Filter 6) ---
-        '{
-            '{16'hb869, 16'hb651, 16'h31a2, 16'hb621, 16'hb96c, 16'h3088, 16'hb4d5, 16'h28c4, 16'h3724},
-            '{16'h3266, 16'ha936, 16'hb362, 16'h3434, 16'hb0be, 16'hb6bc, 16'h2fb8, 16'hb6ca, 16'hb8b2},
-            '{16'haf8a, 16'h35a5, 16'hb4ee, 16'habdf, 16'h30d2, 16'hba05, 16'h37f7, 16'h30fe, 16'hb214},
-            '{16'hb3ef, 16'h302a, 16'haa51, 16'h3195, 16'ha782, 16'hb021, 16'h3170, 16'hb1e1, 16'had67}
+
+        // --- Filter 5 Kernels ---
+        '{ // Output Channel 5
+            '{16'hDCBB, 16'hE6BA, 16'h0B43, 16'hE77B, 16'hD49E, 16'h0910, 16'hECAB, 16'h0262, 16'h1C92}, // Input Chan 0
+            '{16'h0CCC, 16'hFD65, 16'hF13C, 16'h10D2, 16'hF684, 16'hE511, 16'h07B8, 16'hE4D7, 16'hDA6F}, // Input Chan 1
+            '{16'hF876, 16'h1694, 16'hEC4A, 16'hFC10, 16'h09A4, 16'hCFDB, 16'h1FDC, 16'h09FC, 16'hF3D8}, // Input Chan 2
+            '{16'hF022, 16'h0855, 16'hFCD8, 16'h0B2A, 16'hFE20, 16'hF7BE, 16'h0AE0, 16'hF43E, 16'hFA99}  // Input Chan 3
         },
-        // --- Channel 6 Kernels (was Filter 7) ---
-        '{
-            '{16'h307d, 16'ha6ca, 16'hb01b, 16'hb623, 16'h31cf, 16'h34cf, 16'h2e61, 16'hb256, 16'h2dae},
-            '{16'h2f56, 16'h32dd, 16'h2d70, 16'h333b, 16'h3327, 16'h2cc1, 16'h381c, 16'hb1ac, 16'h2ad1},
-            '{16'hb57f, 16'haec0, 16'h2fff, 16'h350c, 16'hb04c, 16'hb21a, 16'h32ad, 16'h2a83, 16'hb62c},
-            '{16'hb1cd, 16'hb052, 16'haa96, 16'h3170, 16'hb440, 16'hb876, 16'hb74f, 16'h3346, 16'hb702}
+
+        // --- Filter 6 Kernels ---
+        '{ // Output Channel 6
+            '{16'h08FA, 16'hFE4E, 16'hF7C9, 16'hE774, 16'h0B9E, 16'h133D, 16'h0661, 16'hF353, 16'h05AE}, // Input Chan 0
+            '{16'h0756, 16'h0DB9, 16'h0570, 16'h0E76, 16'h0E4E, 16'h04C1, 16'h20E3, 16'hF4A9, 16'h0368}, // Input Chan 1
+            '{16'hEA05, 16'hF940, 16'h07FF, 16'h1431, 16'hF767, 16'hF3CC, 16'h0D5A, 16'h0341, 16'hE752}, // Input Chan 2
+            '{16'hF466, 16'hF75D, 16'hFCB5, 16'h0AE0, 16'hEEFE, 16'hDC4F, 16'hE2C4, 16'h0E8C, 16'hE3F9}  // Input Chan 3
         },
-        // --- Channel 7 Kernels (was Filter 8) ---
-        '{
-            '{16'hb7d5, 16'hac7f, 16'h2861, 16'hb87f, 16'h33b9, 16'h3031, 16'h316b, 16'h34b9, 16'h2210},
-            '{16'h336b, 16'habab, 16'hb5f0, 16'h34ac, 16'hac15, 16'hb974, 16'hb32d, 16'hb63f, 16'hb428},
-            '{16'ha82f, 16'hb1cf, 16'hb1d1, 16'ha660, 16'hab5b, 16'hb296, 16'hac34, 16'hb36f, 16'hb919},
-            '{16'h2c83, 16'h200d, 16'h38cd, 16'hb537, 16'hb232, 16'h2ede, 16'hb02b, 16'h2abd, 16'h31cd}
+
+        // --- Filter 7 Kernels ---
+        '{ // Output Channel 7
+            '{16'hE0AD, 16'hFB81, 16'h0231, 16'hDC06, 16'h0F71, 16'h0862, 16'h0AD6, 16'h12E4, 16'h00C2}, // Input Chan 0
+            '{16'h0ED5, 16'hFC2A, 16'hE841, 16'h12AF, 16'hFBEB, 16'hD460, 16'hF1A7, 16'hE705, 16'hEF61}, // Input Chan 1
+            '{16'hFDE9, 16'hF461, 16'hF45E, 16'hFE68, 16'hFC53, 16'hF2D4, 16'hFBCC, 16'hF123, 16'hD734}, // Input Chan 2
+            '{16'h0483, 16'h0082, 16'h2668, 16'hEB23, 16'hF39B, 16'h06DE, 16'hF7AB, 16'h035F, 16'h0B9B}  // Input Chan 3
         }
     };
-    localparam [DATA_WIDTH-1:0] BIASES[0:NUM_CHANNELS-1] = '{16'hb06a, 16'haff3, 16'hb41b, 16'hb59b, 16'h28a8, 16'h3032, 16'h2e84, 16'hb438};
+    localparam logic signed [DATA_WIDTH-1:0] BIASES[0:NUM_CHANNELS-1] = '{16'hF72D, 16'hF80D, 16'hEF95, 16'hE994, 16'h0254, 16'h0864, 16'h0684, 16'hEF1F};
 
     // Internal Signals
     logic kernel_load_r;
@@ -91,7 +97,7 @@ module conv_layer_1 #(
     typedef enum logic [1:0] {IDLE, LOAD, RUN} state_t;
     state_t state, next_state;
     logic [1:0] load_cycle_count;
-    logic [DATA_WIDTH-1:0] kernel_wires [0:NUM_CHANNELS-1][0:INPUT_CHANNEL_NUMBER-1][0:KERNEL_SIZE-1];
+    logic signed [DATA_WIDTH-1:0] kernel_wires [0:NUM_CHANNELS-1][0:INPUT_CHANNEL_NUMBER-1][0:KERNEL_SIZE-1];
     logic [NUM_CHANNELS-1:0] valid_out_wires;
     logic [NUM_CHANNELS-1:0] column_valid_wires;
 
@@ -138,10 +144,9 @@ module conv_layer_1 #(
 
     // Channel Instantiation
     generate
-        // **FIXED**: Removed conditional 'if-generate' logic.
         for (genvar ch_idx = 0; ch_idx < NUM_CHANNELS; ch_idx++) begin : gen_channel
-            wire [DATA_WIDTH - 1:0] channel_output [INPUT_COL_SIZE - KERNEL_SIZE:0];
-            wire [DATA_WIDTH - 1:0] ReLU_output [INPUT_COL_SIZE - KERNEL_SIZE:0];
+            logic signed [DATA_WIDTH - 1:0] channel_output [INPUT_COL_SIZE - KERNEL_SIZE:0];
+            logic signed [DATA_WIDTH - 1:0] ReLU_output [INPUT_COL_SIZE - KERNEL_SIZE:0];
 
             cv3_channel #(
                 .DATA_WIDTH(DATA_WIDTH),

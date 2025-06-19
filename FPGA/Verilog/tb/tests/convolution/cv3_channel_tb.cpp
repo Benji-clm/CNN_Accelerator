@@ -1,9 +1,10 @@
 #include "../base_testbench.h" // Assuming a common base testbench header
-#include <cmath>               // For floating point comparisons
-#include <Imath/half.h>        // For accurate FP16 conversion
-#include <vector>              // For 2D image representation
-#include <array>               // For column data
-#include <iomanip>             // For formatted output
+#include <cmath>                 // For math functions like round
+#include <vector>                // For 2D image representation
+#include <array>                 // For column data
+#include <iomanip>               // For formatted output
+#include <cstdint>               // For fixed-width integers like int16_t
+#include <algorithm>             // For std::max/min
 
 // --- Forward Declarations ---
 class Vdut; // The Verilated DUT class name
@@ -14,24 +15,28 @@ Vdut *top;
 VerilatedVcdC *tfp;
 unsigned int ticks = 0;
 
-using Imath::half;
+// --- Q2.14 Fixed-Point Conversion Helpers ---
+// The Q2.14 format in a 16-bit signed integer means:
+// - 1 bit for the sign
+// - 1 bit for the integer part
+// - 14 bits for the fractional part
+constexpr int Q_FRACTIONAL_BITS = 14;
+constexpr float Q_SCALE_FACTOR = 1 << Q_FRACTIONAL_BITS; // 16384.0f
 
-// --- FP16 Conversion Helpers ---
-// Converts a single-precision float to its 16-bit FP16 representation.
-uint16_t float_to_fp16(float value) {
-    half h(value);
-    return h.bits();
+// Helper: Convert float to Q2.14 format (stored as int16_t)
+int16_t float_to_q2_14(float value) {
+    float scaled_value = value * Q_SCALE_FACTOR;
+    int32_t rounded_value = static_cast<int32_t>(round(scaled_value));
+    return static_cast<int16_t>(std::max(-32768, std::min(32767, rounded_value)));
 }
 
-// Converts a 16-bit FP16 value back to a single-precision float.
-float fp16_to_float(uint16_t value) {
-    half h;
-    h.setBits(value);
-    return (float)h;
+// Helper: Convert Q2.14 bit pattern (int16_t) to float for debugging/display
+float q2_14_to_float(int16_t value) {
+    return static_cast<float>(value) / Q_SCALE_FACTOR;
 }
+
 
 // --- Testbench Class ---
-
 class ChannelTestbench : public BaseTestbench {
 protected:
     // Constants matching the Verilog module parameters
@@ -40,17 +45,17 @@ protected:
     static constexpr int NUM_CHANNELS = 4; // Matches INPUT_CHANNEL_NUMBER
     static constexpr int OUT_SIZE = IMG_SIZE - KERNEL_SIZE + 1; // 10
 
-    // The bias must match the hardcoded 'localparam BIAS' in the Verilog DUT.
-    static constexpr float BIAS = -0.137897;
+    // The bias must match the parameter in the Verilog DUT.
+    // We define it as a float and convert it to Q2.14 where needed.
+    static constexpr float BIAS_FLOAT = -0.137897;
 
-    // Type definitions for clarity
-    using Image = std::vector<std::vector<float>>;
-    using Kernel = std::array<std::array<float, KERNEL_SIZE>, KERNEL_SIZE>;
-    using ImageColumn = std::array<uint16_t, IMG_SIZE>;
-    using KernelColumn = std::array<uint16_t, KERNEL_SIZE>;
+    // Type definitions for clarity using fixed-point representation
+    using ImageQ14 = std::vector<std::vector<int16_t>>;
+    using KernelQ14 = std::array<std::array<int16_t, KERNEL_SIZE>, KERNEL_SIZE>;
+    using ImageColumnQ14 = std::array<int16_t, IMG_SIZE>;
 
     // Buffer to store the output from the DUT
-    Image dut_output;
+    ImageQ14 dut_output;
     int output_col_idx = 0;
 
 
@@ -59,7 +64,7 @@ protected:
         top->rst = 1;
         top->kernel_load = 0;
         top->valid_in = 0;
-        // Initialize all data inputs to zero using unpacked array interfaces
+        // Initialize all data inputs to zero
         for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
             for (int i = 0; i < IMG_SIZE; ++i) {
                 top->input_columns[ch][i] = 0;
@@ -87,16 +92,16 @@ protected:
         }
     }
 
-    // Helper to load all kernels into the channel module
-    void loadAllKernels(const std::vector<Kernel>& kernels) {
+    // Helper to load all kernels (as floats) into the channel module
+    void loadAllKernels(const std::vector<std::array<std::array<float, KERNEL_SIZE>, KERNEL_SIZE>>& kernels) {
         top->kernel_load = 1;
         top->valid_in = 1;
 
         for (int col = 0; col < KERNEL_SIZE; col++) {
             for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
-                // Drive each kernel column for each channel
                 for (int row = 0; row < KERNEL_SIZE; ++row) {
-                    top->kernel_inputs[ch][row] = float_to_fp16(kernels[ch][row][col]);
+                    // Convert float to Q2.14 before driving DUT port
+                    top->kernel_inputs[ch][row] = float_to_q2_14(kernels[ch][row][col]);
                 }
             }
             clockTick();
@@ -107,9 +112,8 @@ protected:
         clockTick(); // Ensure control signals are registered
     }
 
-    // --- Input Driving Helper ---
     // Drives a single column of image data for each channel
-    void driveInputColumns(const std::vector<ImageColumn>& columns) {
+    void driveInputColumns(const std::vector<ImageColumnQ14>& columns) {
         for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
             for (int row = 0; row < IMG_SIZE; ++row) {
                 top->input_columns[ch][row] = columns[ch][row];
@@ -119,31 +123,38 @@ protected:
     
     // --- Output Capture and Buffer Management ---
     void resetOutputBuffer() {
-        dut_output.assign(OUT_SIZE, std::vector<float>(OUT_SIZE, 0.0f));
+        dut_output.assign(OUT_SIZE, std::vector<int16_t>(OUT_SIZE, 0));
         output_col_idx = 0;
     }
 
     void captureOutput() {
         if (output_col_idx < OUT_SIZE) {
-            // Read directly from the unpacked output array
             for (int i = 0; i < OUT_SIZE; i++) {
-                dut_output[i][output_col_idx] = fp16_to_float(top->output_column[i]);
+                // Store the raw Q2.14 value from the DUT
+                dut_output[i][output_col_idx] = top->output_column[i];
             }
             output_col_idx++;
         }
     }
 
-    // --- Golden Model for 2D Convolution ---
-    void golden_convolve_2d(const Image& input, const Kernel& kernel, Image& output) {
+    // --- Bit-Accurate Golden Model for Verification ---
+    void golden_convolve_q14(const ImageQ14& input, const KernelQ14& kernel, ImageQ14& output) {
         for (int y = 0; y < OUT_SIZE; y++) {
             for (int x = 0; x < OUT_SIZE; x++) {
-                float sum = 0.0f;
+                int64_t sum_accumulator = 0;
                 for (int ky = 0; ky < KERNEL_SIZE; ky++) {
                     for (int kx = 0; kx < KERNEL_SIZE; kx++) {
-                        sum += input[y + ky][x + kx] * kernel[ky][kx];
+                        int32_t image_val = input[y + ky][x + kx];
+                        int32_t kernel_val = kernel[ky][kx];
+                        sum_accumulator += image_val * kernel_val;
                     }
                 }
-                output[y][x] = sum;
+                // Convert Qx.28 result back to Q2.14 with rounding
+                int64_t rounded_sum = sum_accumulator + (1LL << (Q_FRACTIONAL_BITS - 1));
+                int32_t shifted_sum = static_cast<int32_t>(rounded_sum >> Q_FRACTIONAL_BITS);
+                
+                // Saturate and store
+                output[y][x] = static_cast<int16_t>(std::max(-32768, std::min(32767, shifted_sum)));
             }
         }
     }
@@ -152,99 +163,92 @@ protected:
 // --- Test Case ---
 TEST_F(ChannelTestbench, FullImageProcessingTest) {
     // 1. Reset the DUT
-    top->rst = 1;
-    clockTick(2);
-    top->rst = 0;
-    clockTick();
+    top->rst = 1; clockTick(2); top->rst = 0; clockTick();
     std::cout << "DUT Reset." << std::endl;
 
-    // 2. Define Kernels and Input Data
-    std::vector<Kernel> kernels(NUM_CHANNELS);
-    kernels[0] = {{{0.182497, 0.095799, -0.118198},{-0.425404, 0.249551, -0.020287}, {0.381072, -0.278986, -0.047726}}};      // Identity
-    kernels[1] = {{{0.054801, 0.153301, -0.185463}, {-0.353260, -0.370310, 0.272392}, {-0.449251, 0.170076, 0.313901}}};      // Box blur / Summing
-    kernels[2] = {{{0.236041, 0.343119, -0.007934}, {0.033060, -0.075088, -0.185990}, {-1.121445, -0.623998, -0.355788}}};  // Sobel X
-    kernels[3] = {{{-0.304607, 0.156517, 0.276813}, {0.149517, 0.437039, -0.052157}, {-0.203192, -0.336657, 0.213920}}};    // Sobel Y
+    // 2. Define Kernels and Input Data as floats
+    std::vector<std::array<std::array<float, KERNEL_SIZE>, KERNEL_SIZE>> kernels_f(NUM_CHANNELS);
+    kernels_f[0] = {{{0.18, 0.09, -0.11}, {-0.42, 0.24, -0.02}, {0.38, -0.27, -0.04}}};
+    kernels_f[1] = {{{0.05, 0.15, -0.18}, {-0.35, -0.37, 0.27}, {-0.44, 0.17, 0.31}}};
+    kernels_f[2] = {{{0.23, 0.34, -0.00}, {0.03, -0.07, -0.18}, {-1.12, -0.62, -0.35}}};
+    kernels_f[3] = {{{-0.30, 0.15, 0.27}, {0.14, 0.43, -0.05}, {-0.20, -0.33, 0.21}}};
 
-    std::vector<Image> inputs(NUM_CHANNELS, Image(IMG_SIZE, std::vector<float>(IMG_SIZE)));
-    // Create simple ramp images for testing
+    std::vector<std::vector<std::vector<float>>> inputs_f(NUM_CHANNELS, std::vector<std::vector<float>>(IMG_SIZE, std::vector<float>(IMG_SIZE)));
     for(int i = 0; i < IMG_SIZE; i++) {
         for (int j = 0; j < IMG_SIZE; j++) {
-            inputs[0][i][j] = static_cast<float>(i * 0.2 + j * 0.4);   // Ramp
-            inputs[1][i][j] = 0.5f;                                   // Constant
-            inputs[2][i][j] = static_cast<float>(j * i * 0.1);         // Vertical lines
-            inputs[3][i][j] = static_cast<float>(i);                   // Horizontal lines
+            inputs_f[0][i][j] = (float)(i * 0.1 - j * 0.05);
+            inputs_f[1][i][j] = 0.5f;
+            inputs_f[2][i][j] = (float)(j * 0.1 - 0.5);
+            inputs_f[3][i][j] = (float)(i * 0.1 - 0.5);
         }
     }
+    
+    // 3. Convert all test data to Q2.14 format for the golden model and DUT
+    std::vector<KernelQ14> kernels_q(NUM_CHANNELS);
+    for(int ch=0; ch<NUM_CHANNELS; ++ch) for(int r=0; r<KERNEL_SIZE; ++r) for(int c=0; c<KERNEL_SIZE; ++c)
+        kernels_q[ch][r][c] = float_to_q2_14(kernels_f[ch][r][c]);
 
-    // 3. Load all kernels into the DUT
-    loadAllKernels(kernels);
-    std::cout << "Kernels loaded into DUT." << std::endl;
+    std::vector<ImageQ14> inputs_q(NUM_CHANNELS, ImageQ14(IMG_SIZE, std::vector<int16_t>(IMG_SIZE)));
+    for(int ch=0; ch<NUM_CHANNELS; ++ch) for(int r=0; r<IMG_SIZE; ++r) for(int c=0; c<IMG_SIZE; ++c)
+        inputs_q[ch][r][c] = float_to_q2_14(inputs_f[ch][r][c]);
 
-    // 4. Calculate Golden Reference Result
-    Image golden_output(OUT_SIZE, std::vector<float>(OUT_SIZE, 0.0f));
-    std::vector<Image> filter_outputs(NUM_CHANNELS, Image(OUT_SIZE, std::vector<float>(OUT_SIZE)));
+    const int16_t BIAS_Q14 = float_to_q2_14(BIAS_FLOAT);
+
+    // 4. Calculate Golden Reference Result using bit-accurate Q2.14 model
+    ImageQ14 golden_output(OUT_SIZE, std::vector<int16_t>(OUT_SIZE, 0));
+    std::vector<ImageQ14> filter_outputs(NUM_CHANNELS, ImageQ14(OUT_SIZE, std::vector<int16_t>(OUT_SIZE)));
     
     for(int ch = 0; ch < NUM_CHANNELS; ++ch) {
-        golden_convolve_2d(inputs[ch], kernels[ch], filter_outputs[ch]);
+        golden_convolve_q14(inputs_q[ch], kernels_q[ch], filter_outputs[ch]);
     }
     
     for (int y = 0; y < OUT_SIZE; y++) {
         for (int x = 0; x < OUT_SIZE; x++) {
-            float total_sum = 0.0f;
+            int32_t total_sum = BIAS_Q14;
             for(int ch = 0; ch < NUM_CHANNELS; ++ch) {
                 total_sum += filter_outputs[ch][y][x];
             }
-            golden_output[y][x] = total_sum + BIAS;
+            golden_output[y][x] = static_cast<int16_t>(std::max(-32768, std::min(32767, total_sum)));
         }
     }
     std::cout << "Golden reference output calculated." << std::endl;
 
-    // 5. Stream all input columns into the DUT
+    // 5. Load kernels and stream input image into DUT
+    loadAllKernels(kernels_f);
+    std::cout << "Kernels loaded into DUT." << std::endl;
+
     std::cout << "Streaming " << IMG_SIZE << " columns into DUT..." << std::endl;
     resetOutputBuffer();
+    
     for (int col = 0; col < IMG_SIZE; ++col) {
-        std::vector<ImageColumn> all_columns(NUM_CHANNELS);
+        std::vector<ImageColumnQ14> all_columns(NUM_CHANNELS);
         for(int ch = 0; ch < NUM_CHANNELS; ++ch) {
             for(int row = 0; row < IMG_SIZE; ++row) {
-                all_columns[ch][row] = float_to_fp16(inputs[ch][row][col]);
+                all_columns[ch][row] = inputs_q[ch][row][col];
             }
         }
-        
-        driveInputColumns(all_columns);
-
         top->valid_in = 1;
+        driveInputColumns(all_columns);
         clockTick();
         top->valid_in = 0;
-        
-        // This delay can be adjusted based on the internal pipeline depth of the DUT
-        clockTick(4);
+        clockTick(3);
     }
-    
-    // Ensure the last columns are processed
-    clockTick(5); // Add a few extra ticks for safety
+    top->valid_in = 0;
+    clockTick(10); // Add extra ticks to drain the pipeline
     std::cout << "Finished streaming. " << output_col_idx << " output columns captured." << std::endl;
+
 
     // 6. Verify the DUT's output against the golden model
     ASSERT_EQ(output_col_idx, OUT_SIZE) << "Incorrect number of output columns were captured.";
-    std::cout << "Verifying 10x10 output image..." << std::endl;
-    int mismatches = 0;
+    std::cout << "Verifying " << OUT_SIZE << "x" << OUT_SIZE << " output image..." << std::endl;
     for (int y = 0; y < OUT_SIZE; y++) {
         for (int x = 0; x < OUT_SIZE; x++) {
-            float actual = dut_output[y][x];
-            float expected = golden_output[y][x];
-            // Use a relative tolerance for floating point comparisons
-            if (std::abs(actual - expected) / std::abs(expected) > 0.01f) { 
-                if (mismatches < 10) { // Print first 10 mismatches
-                    std::cerr << "Mismatch at (" << y << ", " << x << "): "
-                              << "Expected=" << expected << ", Got=" << actual << std::endl;
-                }
-                mismatches++;
-            }
+            // Compare raw fixed-point values for an exact match
+            EXPECT_NEAR(q2_14_to_float(golden_output[y][x]), q2_14_to_float(dut_output[y][x]), 6.0f / Q_SCALE_FACTOR)
+                << "Mismatch at (" << y << ", " << x << "): "
+                << "Expected=" << golden_output[y][x] << " (" << q2_14_to_float(golden_output[y][x])
+                << "), Got=" << dut_output[y][x] << " (" << q2_14_to_float(dut_output[y][x]) << ")";
         }
-    }
-    EXPECT_TRUE(mismatches < 3) << "Found " << mismatches << " mismatches in the output image.";
-    if (mismatches == 0) {
-        std::cout << "SUCCESS: DUT output matches golden model." << std::endl;
     }
 }
 

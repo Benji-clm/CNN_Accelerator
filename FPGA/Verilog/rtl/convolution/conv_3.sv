@@ -6,24 +6,23 @@ module conv_3 #(
     input logic rst,
 
     // Input data streams
-    input logic [DATA_WIDTH-1:0] data_in [KERNEL_SIZE - 1: 0],
+    input logic signed [DATA_WIDTH-1:0] data_in [KERNEL_SIZE - 1: 0],
 
     // Control signals
     input logic kernel_load, // High to load kernel weights, low to process image data
     input logic valid_in,    // High when input data is valid
-    input logic valid_out,   // FIXED: Port direction is now output
-    // Input signal to control when the output is latched
+    input logic valid_out,  
 
     // Output data
-    output logic [DATA_WIDTH-1:0] data_out
+    output logic signed [DATA_WIDTH-1:0] data_out
 );
 
     // Internal Registers
-    logic [DATA_WIDTH-1:0] kernel_matrix [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
-    logic [DATA_WIDTH-1:0] image_buffer  [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
-    logic [DATA_WIDTH-1:0] conv_reg;
-    logic [DATA_WIDTH-1:0] result_reg;
+    logic signed [DATA_WIDTH-1:0] kernel_matrix [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
+    logic signed [DATA_WIDTH-1:0] image_buffer  [KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
+    logic signed [DATA_WIDTH-1:0] conv_reg;
 
+    localparam signed [DATA_WIDTH*2-1:0] ROUND_CONSTANT = 1 << (14 - 1);
     // The final output is the value from the last pipeline stage.
     assign data_out = conv_reg;
 
@@ -37,7 +36,6 @@ module conv_3 #(
                 end
             end
             conv_reg   <= '0;
-            result_reg <= '0;
         end
         else begin
             // --- Data Shifting ---
@@ -57,55 +55,59 @@ module conv_3 #(
             end
 
             // --- Data Pipeline ---
-
-            // Stage 1: Latch the result of the combinational MAC unit.
-            // This happens on the cycle that valid image data is being processed.
-            if (valid_in && !kernel_load) begin
-                result_reg <= final_sum;
-            end
-
             // Stage 2: Latch the final output.
             // This is controlled by the parent module's external timing signal.
             if (valid_out) begin
-                conv_reg <= result_reg;
+                conv_reg <= final_sum;
             end
         end
     end
 
-    // --- Combinational Multiply and Accumulate (MAC) Logic ---
-    // This logic is unchanged.
+    // --- Combinational Multiply and Accumulate (MAC) Logic for Q2.14---
+    // This logic performs fixed-point arithmetic for the Q2.14 data format.
 
-    logic [DATA_WIDTH-1:0] mul_results[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
-    logic [DATA_WIDTH-1:0] add_stage1[4:0];
-    logic [DATA_WIDTH-1:0] add_stage2[2:0];
-    logic [DATA_WIDTH-1:0] add_stage3[1:0];
-    logic [DATA_WIDTH-1:0] final_sum;
+    // Intermediate wires for multiplication results
+    logic signed [DATA_WIDTH-1:0] mul_results[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
+    logic signed [DATA_WIDTH*2-1:0] mul_full[KERNEL_SIZE-1:0][KERNEL_SIZE-1:0];
 
+    // Intermediate wires for adder tree stages
+    logic signed [DATA_WIDTH-1:0] add_stage1[4:0];
+    logic signed [DATA_WIDTH-1:0] add_stage2[2:0];
+    logic signed [DATA_WIDTH-1:0] add_stage3[1:0];
+    logic signed [DATA_WIDTH-1:0] final_sum;
+
+    // Perform Multiply-Accumulate
     generate
         for (genvar k = 0; k < KERNEL_SIZE; k++) begin : gen_row
             for (genvar l = 0; l < KERNEL_SIZE; l++) begin : gen_col
-                mulfp16 mul_inst (
-                    .a_in(image_buffer[k][l]),
-                    .b_in(kernel_matrix[k][l]),
-                    .c_out(mul_results[k][l])
-                );
+                // Q2.14 multiplication:
+                // 1. Multiply two 16-bit signed numbers, resulting in a 32-bit number.
+                //    The format of the result is Q4.28.
+                assign mul_full[k][l] = image_buffer[k][l] * kernel_matrix[k][l];
+
+                // 2. Arithmetically shift right by 14 bits to convert back to Q2.14 format.
+                //    This truncates the lower 14 fractional bits.
+                assign mul_results[k][l] = (mul_full[k][l] + ROUND_CONSTANT) >>> 14;
             end
         end
-
-        addfp16 add_s1_0(.a(mul_results[0][0]), .b(mul_results[0][1]), .sum(add_stage1[0]));
-        addfp16 add_s1_1(.a(mul_results[0][2]), .b(mul_results[1][0]), .sum(add_stage1[1]));
-        addfp16 add_s1_2(.a(mul_results[1][1]), .b(mul_results[1][2]), .sum(add_stage1[2]));
-        addfp16 add_s1_3(.a(mul_results[2][0]), .b(mul_results[2][1]), .sum(add_stage1[3]));
-        assign add_stage1[4] = mul_results[2][2];
-
-        addfp16 add_s2_0(.a(add_stage1[0]), .b(add_stage1[1]), .sum(add_stage2[0]));
-        addfp16 add_s2_1(.a(add_stage1[2]), .b(add_stage1[3]), .sum(add_stage2[1]));
-        assign add_stage2[2] = add_stage1[4];
-
-        addfp16 add_s3_0(.a(add_stage2[0]), .b(add_stage2[1]), .sum(add_stage3[0]));
-        assign add_stage3[1] = add_stage2[2];
-
-        addfp16 add_final(.a(add_stage3[0]), .b(add_stage3[1]), .sum(final_sum));
     endgenerate
+
+    // Adder Tree for Q2.14
+    // Addition in Q2.14 is standard integer addition.
+    // We cast to signed to ensure correct addition.
+    assign add_stage1[0] = mul_results[0][0] + mul_results[0][1];
+    assign add_stage1[1] = mul_results[0][2] + mul_results[1][0];
+    assign add_stage1[2] = mul_results[1][1] + mul_results[1][2];
+    assign add_stage1[3] = mul_results[2][0] + mul_results[2][1];
+    assign add_stage1[4] = mul_results[2][2];
+
+    assign add_stage2[0] = add_stage1[0] + add_stage1[1];
+    assign add_stage2[1] = add_stage1[2] + add_stage1[3];
+    assign add_stage2[2] = add_stage1[4];
+
+    assign add_stage3[0] = add_stage2[0] + add_stage2[1];
+    assign add_stage3[1] = add_stage2[2];
+
+    assign final_sum = add_stage3[0] + add_stage3[1];
 
 endmodule
